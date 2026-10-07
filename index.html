@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0f17" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icono.png">
+<title>Verificador</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--t:#111827;--g:#6b7280;--g2:#9ca3af;--l:#e5e7eb;--soft:#f3f4f6;--acc:#1f2937;
+--ok:#047857;--okbg:#ecfdf5;--okbd:#a7f3d0;--med:#c2410c;--medbg:#fff7ed;--medbd:#fed7aa;--sev:#b91c1c;--sevbg:#fef2f2;--sevbd:#fecaca;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#0b0f17;--card:#121826;--t:#e5e7eb;--g:#9ca3af;--g2:#6b7280;--l:#1f2937;--soft:#0f1520;--acc:#e5e7eb;
+--ok:#34d399;--okbg:#0a231b;--okbd:#134e3a;--med:#fb923c;--medbg:#24160a;--medbd:#6b2f10;--sev:#f87171;--sevbg:#261111;--sevbd:#6b1d1d;color-scheme:dark}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--t);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Roboto","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;
+padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
+.wrap{max-width:560px;margin:0 auto;padding-inline:16px}
+header .wrap{display:flex;align-items:center;justify-content:space-between;height:58px}
+.marca{font-weight:650;font-size:16px}
+nav{display:flex;gap:18px}
+nav a{color:var(--g);text-decoration:none;font-size:15px;cursor:pointer;padding:6px 0}
+nav a.on{color:var(--t);font-weight:600}
+main{padding-block:14px 48px}
+.tab[hidden]{display:none}
+.caja{display:flex;gap:8px;background:var(--card);border:1px solid var(--l);border-radius:14px;padding:6px}
+.caja:focus-within{border-color:var(--g2)}
+.caja input{flex:1;min-width:0;border:0;background:none;color:var(--t);font:500 15px/1.2 ui-monospace,"Roboto Mono",Menlo,monospace;padding:13px 10px;outline:none}
+.caja input::placeholder{font-family:inherit;color:var(--g2);font-weight:400}
+.caja button{border:0;border-radius:10px;background:var(--acc);color:var(--card);font:600 15px/1 inherit;padding:0 16px;cursor:pointer;white-space:nowrap}
+.linea{display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:28px;margin-top:8px;font-size:13.5px;color:var(--g)}
+.err{color:var(--sev)}
+.enlace{background:none;border:0;color:var(--g);font:inherit;font-size:13.5px;cursor:pointer;padding:4px 0}
+.nombre input,.campo{width:100%;border:1px solid var(--l);background:var(--card);color:var(--t);border-radius:10px;padding:12px;font:inherit;font-size:15px;outline:none}
+.cargando{display:flex;align-items:center;justify-content:center;gap:10px;color:var(--g);font-size:15px;padding:44px 0}
+.spin{width:18px;height:18px;border:2px solid var(--l);border-top-color:var(--g);border-radius:50%;animation:g .8s linear infinite}
+@keyframes g{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:2s}}
+.res{margin-top:18px;background:var(--card);border:1px solid var(--l);border-radius:16px;overflow:hidden}
+.v{padding:28px 20px 20px;text-align:center}
+.v .i{font-size:46px;line-height:1}
+.v .w{font-size:28px;font-weight:750;letter-spacing:-.02em;margin-top:10px}
+.v .s{color:var(--g);font-size:15px;margin-top:2px}
+.dir{margin:16px 20px 0;text-align:center;font:500 14.5px/1.6 ui-monospace,"Roboto Mono",Menlo,monospace;color:var(--g);word-break:break-all}
+.dir b{color:var(--t);font-weight:700}
+.motivos{margin:14px 20px 0;padding:12px 14px;border-radius:10px;font-size:14.5px;display:grid;gap:6px}
+.acc{display:flex;gap:8px;justify-content:center;padding:18px 20px 20px;flex-wrap:wrap}
+.btn{border:1px solid var(--l);background:var(--card);color:var(--t);border-radius:10px;padding:11px 16px;font:500 15px/1 inherit;cursor:pointer}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:var(--card)}
+.det{border-top:1px solid var(--l);padding:0 20px}
+.det summary{list-style:none;cursor:pointer;color:var(--g);font-size:14px;padding:14px 0;text-align:center}
+.det summary::-webkit-details-marker{display:none}
+.cont{padding-bottom:18px;font-size:14px;color:var(--g)}
+.fila{display:flex;justify-content:space-between;gap:16px;padding:8px 0;border-bottom:1px solid var(--l)}
+.fila:last-child{border:0}
+.fila span:last-child{text-align:right;color:var(--t);min-width:0;overflow-wrap:anywhere}
+.ok{color:var(--ok)!important}.mal{color:var(--sev)!important}.med{color:var(--med)!important}
+.nota{text-align:center;color:var(--g2);font-size:13px;margin-top:24px}
+h2{font-size:18px;margin:6px 0 4px}
+.sub{color:var(--g);font-size:14px;margin:0 0 16px}
+.lista{background:var(--card);border:1px solid var(--l);border-radius:14px;overflow:hidden}
+.item{display:flex;align-items:center;gap:12px;padding:13px 14px;border-bottom:1px solid var(--l);cursor:pointer}
+.item:last-child{border:0}
+.item .ic{font-size:20px;width:24px;text-align:center}
+.item .tx{flex:1;min-width:0}
+.item .tx b{display:block;font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .tx code{font-size:13px;color:var(--g)}
+.item .h{color:var(--g2);font-size:13px;white-space:nowrap}
+.vac{padding:26px;text-align:center;color:var(--g);font-size:15px}
+.bloque{display:grid;gap:10px;margin-bottom:30px}
+.msg{font-size:14px;min-height:20px;color:var(--g)}
+.msg.okm{color:var(--ok)}
+.toast{position:fixed;bottom:calc(22px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--t);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.on{opacity:1}
+.aviso{background:var(--medbg);color:var(--med);border-radius:12px;padding:12px 14px;font-size:14px;margin-bottom:14px}
+</style></head><body>
+
+<header><div class="wrap">
+<div class="marca">Verificador</div>
+<nav>
+<a data-t="revisar" class="on">Revisar</a>
+<a data-t="historial">Historial</a>
+<a data-t="ajustes">Ajustes</a>
+</nav>
+</div></header>
+
+<main class="wrap">
+
+<section class="tab" id="t-revisar">
+<div class="aviso" id="sinClave" hidden>Para revisar más rápido, agrega tu clave de TronGrid en <a class="enlace" style="color:inherit;text-decoration:underline" data-ir="ajustes">Ajustes</a>. Sin clave también funciona, pero más lento.</div>
+<div class="caja">
+<input id="dir" type="text" placeholder="Pega la dirección del cliente" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="text">
+<button id="btn">Pegar</button>
+</div>
+<div class="linea"><span id="msg"></span><button class="enlace" id="mostrarNombre">+ nombre del cliente</button></div>
+<div class="nombre" id="nombre" hidden><input id="cli" type="text" placeholder="Nombre del cliente (opcional)"></div>
+<div class="cargando" id="load" hidden><div class="spin"></div><span id="tiempo">Revisando…</span></div>
+<div class="res" id="res" hidden></div>
+<p class="nota">Solo se usa la dirección pública · USDT red TRON</p>
+</section>
+
+<section class="tab" id="t-historial" hidden>
+<h2>Historial</h2>
+<p class="sub">Tus revisiones en este celular.</p>
+<div class="lista" id="hist"></div>
+</section>
+
+<section class="tab" id="t-ajustes" hidden>
+<div class="bloque">
+<h2>Clave de TronGrid</h2>
+<p class="sub" style="margin:0">Se guarda solo en este celular. Hace las revisiones más rápidas y confiables. La sacas de trongrid.io → API Keys.</p>
+<input class="campo" id="clave" type="password" placeholder="Pega tu clave" autocomplete="off" spellcheck="false">
+<div class="msg" id="claveMsg"></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" id="guardarClave">Guardar clave</button><button class="btn" id="borrarClave">Borrar clave</button></div>
+</div>
+<div class="bloque">
+<h2>Historial</h2>
+<p class="sub" style="margin:0">Borra todas las revisiones guardadas en este celular.</p>
+<div style="display:flex;gap:8px;flex-wrap:wrap" id="borrarZona"><button class="btn" id="borrarHist">Borrar historial</button></div>
+</div>
+<div class="bloque">
+<h2>Qué revisa</h2>
+<p class="sub" style="margin:0">La dirección contra la lista de sanciones de la OFAC, la lista negra de Tether y GoPlus Security, y sus 15 contrapartes principales contra OFAC y Tether. 🔴 MALA si la dirección o una contraparte está sancionada o congelada, o tiene una marca grave. 🟠 RIESGO MEDIO si hay una marca menor o alguna fuente no respondió.</p>
+</div>
+</section>
+</main>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+"use strict";
+/* ================= utilidades ================= */
+const $=id=>document.getElementById(id);
+const el=(tag,props={},kids=[])=>{const e=document.createElement(tag);Object.assign(e,props);for(const k of [].concat(kids))if(k!=null)e.append(k);return e;};
+const corta=d=>d?d.slice(0,6)+"…"+d.slice(-6):"";
+const RE=/^T[1-9A-HJ-NP-Za-km-z]{33}$/;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v);}catch(_){return d;}},
+          set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(_){}}, del(k){try{localStorage.removeItem(k);}catch(_){}}};
+function toast(t){const x=$("toast");x.textContent=t;x.classList.add("on");setTimeout(()=>x.classList.remove("on"),1700);}
+
+/* ================= base58 / direcciones TRON ================= */
+const B58="123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+async function sha256(b){return new Uint8Array(await crypto.subtle.digest("SHA-256",b));}
+async function tronHex20(addr){
+  let n=0n;for(const ch of addr){const i=B58.indexOf(ch);if(i<0)throw new Error("caracter inválido");n=n*58n+BigInt(i);}
+  let hex=n.toString(16);if(hex.length%2)hex="0"+hex;
+  const bytes=new Uint8Array(hex.match(/../g).map(h=>parseInt(h,16)));
+  if(bytes.length!==25||bytes[0]!==0x41)throw new Error("no es una dirección TRON");
+  const cuerpo=bytes.slice(0,21),chk=bytes.slice(21);
+  const h=await sha256(await sha256(cuerpo));
+  for(let i=0;i<4;i++)if(h[i]!==chk[i])throw new Error("la dirección tiene un error de captura");
+  return [...cuerpo.slice(1)].map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+
+/* ================= consultas ================= */
+const USDT="TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+const OFAC_BASE="https://raw.githubusercontent.com/0xB10C/ofac-sanctioned-digital-currency-addresses/lists/sanctioned_addresses_";
+const GOPLUS_SEVERAS=new Set(["sanctioned","money_laundering","stealing_attack","darkweb_transactions","cybercrime","financial_crime","blackmail_activities"]);
+const MAX_CP=15,TX_LEER=400;
+const clave=()=>LS.get("clave","");
+let ultimaLlamada=0;
+async function ritmo(){const espera=(clave()?260:1150)-(Date.now()-ultimaLlamada);if(espera>0)await sleep(espera);ultimaLlamada=Date.now();}
+async function tron(url,cuerpo){
+  for(let intento=0;intento<3;intento++){
+    await ritmo();
+    const h={"Accept":"application/json"};if(clave())h["TRON-PRO-API-KEY"]=clave();
+    if(cuerpo)h["Content-Type"]="application/json";
+    const ctl=new AbortController();const to=setTimeout(()=>ctl.abort(),20000);
+    try{
+      const r=await fetch(url,{method:cuerpo?"POST":"GET",headers:h,body:cuerpo?JSON.stringify(cuerpo):undefined,signal:ctl.signal});
+      if(r.status===429){await sleep(1500*(intento+1));continue;}
+      if(!r.ok)throw new Error("TronGrid respondió "+r.status);
+      return await r.json();
+    }finally{clearTimeout(to);}
+  }
+  throw new Error("TronGrid está limitando las consultas; intenta en un minuto");
+}
+async function llamarContrato(dir,funcion){
+  const j=await tron("https://api.trongrid.io/wallet/triggerconstantcontract",
+    {owner_address:dir,contract_address:USDT,function_selector:funcion,parameter:(await tronHex20(dir)).padStart(64,"0"),visible:true});
+  const r=(j.constant_result||[])[0];if(r==null)throw new Error("respuesta inesperada");
+  return BigInt("0x"+(r||"0"));
+}
+const congeladaTether=async d=>(await llamarContrato(d,"isBlackListed(address)"))===1n;
+const saldoUSDT=async d=>Number(await llamarContrato(d,"balanceOf(address)"))/1e6;
+
+async function listaOFAC(){
+  const c=LS.get("ofac",null);if(c&&Date.now()-c.t<24*3600e3)return new Set(c.l);
+  const l=[];
+  for(const a of ["TRX","USDT","USDC"]){
+    const r=await fetch(OFAC_BASE+a+".txt");if(!r.ok)throw new Error("lista OFAC no disponible");
+    (await r.text()).split(/\s+/).forEach(x=>{if(x.startsWith("T"))l.push(x);});
+  }
+  LS.set("ofac",{t:Date.now(),l});return new Set(l);
+}
+async function goplus(d){
+  const r=await fetch(`https://api.gopluslabs.io/api/v1/address_security/${d}?chain_id=tron`);
+  if(!r.ok)throw new Error("GoPlus respondió "+r.status);
+  const j=await r.json();if(j.code!==1)throw new Error("GoPlus: "+(j.message||"error"));
+  const res=j.result||{};
+  return Object.keys(res).filter(k=>!["data_source","contract_address"].includes(k)&&!["0","","None","null"].includes(String(res[k]))).sort();
+}
+async function historial(d){
+  const txs=[];let fp=null;
+  while(txs.length<TX_LEER){
+    let u=`https://api.trongrid.io/v1/accounts/${d}/transactions/trc20?contract_address=${USDT}&limit=200&only_confirmed=true`;
+    if(fp)u+="&fingerprint="+encodeURIComponent(fp);
+    const j=await tron(u);
+    for(const t of j.data||[]){if(t.type!=="Transfer")continue;
+      const dec=+((t.token_info||{}).decimals??6);txs.push({de:t.from,para:t.to,monto:Number(t.value)/10**dec,ms:t.block_timestamp});}
+    fp=(j.meta||{}).fingerprint;if(!fp||!(j.data||[]).length)break;
+  }
+  return txs.slice(0,TX_LEER);
+}
+
+/* ================= revisión ================= */
+const VERDE="LIMPIA",AMARILLO="RIESGO MEDIO",ROJO="MALA";
+function parecidas(d){
+  const vistas={};for(const h of LS.get("hist",[]))if(h.direccion!==d&&!vistas[h.direccion])vistas[h.direccion]=h;
+  return Object.values(vistas).filter(h=>{const c=h.direccion;return c.slice(-5)===d.slice(-5)||(c.slice(1,5)===d.slice(1,5)&&c.slice(-4)===d.slice(-4))||c.slice(0,7)===d.slice(0,7);});
+}
+async function revisar(d,cliente,prog){
+  const t0=performance.now();const rojos=[],amarillos=[],info=[],fuentes=[],errores=[];
+  await tronHex20(d);
+  prog("Revisando la dirección…");
+  let ofac=null;
+  try{ofac=await listaOFAC();const hit=ofac.has(d);fuentes.push({f:"OFAC",e:"ok",h:hit});if(hit)rojos.push("Aparece en la lista de sanciones de la OFAC.");}
+  catch(e){fuentes.push({f:"OFAC",e:"error"});errores.push("OFAC");}
+  try{const c=await congeladaTether(d);fuentes.push({f:"Tether (lista negra)",e:"ok",h:c});if(c)rojos.push("Tether tiene congelado el USDT de esta dirección.");}
+  catch(e){fuentes.push({f:"Tether (lista negra)",e:"error"});errores.push("Tether");}
+  try{const b=await goplus(d);fuentes.push({f:"GoPlus",e:"ok",h:b.length>0});
+      if(b.length)(b.some(x=>GOPLUS_SEVERAS.has(x))?rojos:amarillos).push("GoPlus la marca: "+b.join(", ").replace(/_/g," ")+".");}
+  catch(e){fuentes.push({f:"GoPlus",e:"error"});errores.push("GoPlus");}
+  let saldo=null;try{saldo=await saldoUSDT(d);}catch(_){}
+  const cp={total:0,revisadas:0};
+  prog("Revisando sus contrapartes…");
+  try{
+    const txs=await historial(d);
+    if(!txs.length)info.push("Wallet nueva: todavía no ha recibido ni enviado USDT.");
+    else if(txs.length>=TX_LEER)info.push(`Se revisaron sus ${TX_LEER} movimientos más recientes.`);
+    const g={};
+    for(const t of txs){const otra=t.de===d?t.para:t.de;if(!otra||otra===d)continue;
+      const c=g[otra]||(g[otra]={rec:0,env:0,nRec:0,nEnv:0,nDust:0});
+      if(t.para===d){c.rec+=t.monto;c.nRec++;if(t.monto<1)c.nDust++;}else{c.env+=t.monto;c.nEnv++;}}
+    cp.total=Object.keys(g).length;
+    const top=Object.entries(g).filter(([,c])=>!(c.nEnv===0&&c.nRec>0&&c.nDust===c.nRec))
+      .sort((a,b)=>(b[1].rec+b[1].env)-(a[1].rec+a[1].env)).slice(0,MAX_CP);
+    let n=0;
+    for(const [a,c] of top){
+      prog(`Revisando contrapartes… ${++n} de ${top.length}`);
+      const p=[];if(ofac&&ofac.has(a))p.push("sancionada por OFAC");
+      try{if(await congeladaTether(a))p.push("congelada por Tether");}catch(_){errores.push("Tether (contrapartes)");}
+      cp.revisadas++;
+      if(p.length){const rel=[];if(c.rec)rel.push(`le envió ${c.rec.toLocaleString("es-MX",{maximumFractionDigits:2})} USDT`);
+        if(c.env)rel.push(`recibió ${c.env.toLocaleString("es-MX",{maximumFractionDigits:2})} USDT de ella`);
+        rojos.push(`Contraparte ${corta(a)} (${rel.join(" y ")}) está ${p.join(" y ")}.`);}
+    }
+  }catch(e){errores.push("historial");}
+  for(const h of parecidas(d).slice(0,3))
+    amarillos.push(`Se parece a ${corta(h.direccion)} (revisada el ${new Date(h.fecha).toLocaleDateString("es-MX")}${h.cliente?", "+h.cliente:""}) pero no es la misma. Confirma la dirección completa con el cliente.`);
+  const errs=[...new Set(errores)];
+  if(errs.length)amarillos.push("No se pudo verificar todo ("+errs.join(", ")+"). Repite la revisión.");
+  const resultado=rojos.length?ROJO:amarillos.length?AMARILLO:VERDE;
+  return {fecha:new Date().toISOString(),direccion:d,cliente:cliente||"",resultado,motivos:[...rojos,...amarillos],info,fuentes,
+          saldo,cp,segundos:Math.round((performance.now()-t0)/100)/10};
+}
+
+/* ================= interfaz ================= */
+const EST={"LIMPIA":{c:"ok",i:"✅",s:"Puedes enviar"},"RIESGO MEDIO":{c:"med",i:"🟠",s:"Revisa antes de enviar"},"MALA":{c:"sev",i:"🔴",s:"No le envíes"}};
+function ir(t){document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on",a.dataset.t===t));
+  document.querySelectorAll(".tab").forEach(s=>s.hidden=s.id!=="t-"+t);
+  if(t==="historial")pintarHist();if(t==="revisar")refrescarAviso();}
+document.querySelectorAll("nav a,[data-ir]").forEach(a=>a.onclick=()=>ir(a.dataset.t||a.dataset.ir));
+function refrescarAviso(){$("sinClave").hidden=!!clave();}
+
+let ocupado=false,ultima="";
+function estado(){const v=$("dir").value.trim();const m=$("msg");
+  $("btn").textContent=v?"Revisar":"Pegar";
+  if(!v){m.textContent="";m.className="";return false;}
+  if(RE.test(v)){m.textContent="";return true;}
+  m.textContent=v.length<34?`Faltan ${34-v.length} caracteres`:"Dirección no válida (empieza con T, 34 caracteres)";m.className="err";return false;}
+$("dir").addEventListener("input",()=>{const v=$("dir").value.replace(/\s/g,"");if(v!==$("dir").value)$("dir").value=v;if(estado()&&v!==ultima)iniciar();});
+$("dir").addEventListener("keydown",e=>{if(e.key==="Enter")iniciar();});
+$("btn").onclick=async()=>{
+  if(!$("dir").value.trim()){try{$("dir").value=(await navigator.clipboard.readText()).trim().replace(/\s/g,"");}catch(_){$("dir").focus();toast("Mantén presionada la caja y elige Pegar");return;}
+    if(estado())iniciar();return;}
+  iniciar();};
+$("mostrarNombre").onclick=()=>{const n=$("nombre");n.hidden=!n.hidden;$("mostrarNombre").textContent=n.hidden?"+ nombre del cliente":"− ocultar nombre";if(!n.hidden)$("cli").focus();};
+
+async function iniciar(){
+  const d=$("dir").value.trim();if(ocupado||!estado())return;
+  ocupado=true;ultima=d;$("btn").disabled=true;$("res").hidden=true;$("load").hidden=false;$("dir").blur();
+  try{
+    const r=await revisar(d,$("cli").value.trim(),t=>$("tiempo").textContent=t);
+    const h=LS.get("hist",[]);h.unshift(r);LS.set("hist",h.slice(0,300));
+    pintar($("res"),r,true);
+  }catch(e){$("msg").textContent=e.message||"No se pudo revisar";$("msg").className="err";ultima="";}
+  finally{ocupado=false;$("btn").disabled=false;$("load").hidden=true;$("tiempo").textContent="Revisando…";}
+}
+
+function pintar(box,r,acciones){
+  const e=EST[r.resultado];box.style.borderColor=`var(--${e.c}bd)`;
+  const kids=[el("div",{className:"v",style:`background:var(--${e.c}bg)`},[el("div",{className:"i",textContent:e.i}),
+    el("div",{className:"w",textContent:r.resultado,style:`color:var(--${e.c})`}),el("div",{className:"s",textContent:e.s+(r.cliente?" · "+r.cliente:"")})])];
+  const dd=el("div",{className:"dir"});dd.append(el("b",{textContent:r.direccion.slice(0,6)}),r.direccion.slice(6,-6),el("b",{textContent:r.direccion.slice(-6)}));kids.push(dd);
+  if(r.motivos.length){const m=el("div",{className:"motivos",style:`background:var(--${e.c}bg);color:var(--${e.c})`});r.motivos.forEach(x=>m.append(el("div",{textContent:x})));kids.push(m);}
+  if(acciones){const a=el("div",{className:"acc"});
+    if(e.c!=="sev")a.append(el("button",{className:"btn pri",textContent:"Copiar dirección",onclick:async()=>{try{await navigator.clipboard.writeText(r.direccion);toast("Dirección copiada");}catch(_){toast("No se pudo copiar");}}}));
+    a.append(el("button",{className:"btn",textContent:"Nueva revisión",onclick:()=>{$("dir").value="";$("cli").value="";ultima="";box.hidden=true;estado();$("dir").focus();}}));
+    kids.push(a);}else kids.push(el("div",{style:"height:14px"}));
+  const filas=[["Revisado",new Date(r.fecha).toLocaleString("es-MX",{dateStyle:"medium",timeStyle:"short"})+` · ${r.segundos} s`]];
+  if(r.saldo!=null)filas.push(["Saldo",r.saldo.toLocaleString("es-MX",{maximumFractionDigits:2})+" USDT"]);
+  if(r.cp.revisadas)filas.push(["Contrapartes revisadas",`${r.cp.revisadas} de ${r.cp.total}`]);
+  r.info.forEach(x=>filas.push(["Nota",x]));
+  r.fuentes.forEach(f=>filas.push([f.f,f.e==="error"?{t:"Sin respuesta",c:"med"}:f.h?{t:"Hallazgo",c:"mal"}:{t:"Sin hallazgos",c:"ok"}]));
+  const cont=el("div",{className:"cont"});
+  filas.forEach(([a,b])=>cont.append(el("div",{className:"fila"},[el("span",{textContent:a}),typeof b==="string"?el("span",{textContent:b}):el("span",{textContent:b.t,className:b.c})])));
+  kids.push(el("details",{className:"det"},[el("summary",{textContent:"Ver detalles"}),cont]));
+  box.replaceChildren(...kids);box.hidden=false;
+}
+
+function hora(f){const d=new Date(f),hoy=new Date();const hh=d.toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});
+  return d.toDateString()===hoy.toDateString()?hh:d.toLocaleDateString("es-MX",{day:"numeric",month:"short"})+" "+hh;}
+function pintarHist(){
+  const h=LS.get("hist",[]);
+  if(!h.length){$("hist").replaceChildren(el("div",{className:"vac",textContent:"Todavía no hay revisiones en este celular"}));return;}
+  $("hist").replaceChildren(...h.map(x=>{const e=EST[x.resultado];
+    const it=el("div",{className:"item"},[el("div",{className:"ic",textContent:e.i}),el("div",{className:"tx"},[el("b",{textContent:x.cliente||x.resultado}),el("code",{textContent:corta(x.direccion)})]),el("div",{className:"h",textContent:hora(x.fecha)})]);
+    it.onclick=()=>{const n=it.nextSibling;if(n&&n.classList&&n.classList.contains("res")){n.remove();return;}
+      const box=el("div",{className:"res",style:"margin:0 10px 12px"});pintar(box,x,false);it.after(box);};
+    return it;}));
+}
+
+/* ajustes */
+$("clave").value=clave();
+$("guardarClave").onclick=()=>{const k=$("clave").value.trim();
+  if(!/^[0-9a-f-]{30,}$/i.test(k)){$("claveMsg").textContent="Esa clave no parece válida. Cópiala completa desde trongrid.io.";$("claveMsg").className="msg err";return;}
+  LS.set("clave",k);$("claveMsg").textContent="Clave guardada en este celular.";$("claveMsg").className="msg okm";refrescarAviso();};
+$("borrarClave").onclick=()=>{LS.del("clave");$("clave").value="";$("claveMsg").textContent="Clave borrada.";$("claveMsg").className="msg";refrescarAviso();};
+function botonBorrar(){const z=$("borrarZona");
+  z.replaceChildren(el("button",{className:"btn",textContent:"Borrar historial",onclick:()=>{
+    z.replaceChildren(el("span",{className:"msg",textContent:"¿Borrar todas las revisiones?"}),
+      el("button",{className:"btn pri",textContent:"Sí, borrar",onclick:()=>{LS.del("hist");toast("Historial borrado");botonBorrar();}}),
+      el("button",{className:"btn",textContent:"Cancelar",onclick:botonBorrar}));}}));}
+botonBorrar();
+refrescarAviso();estado();
+</script></body></html>
