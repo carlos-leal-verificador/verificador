@@ -30,6 +30,7 @@ main{padding-block:14px 48px}
 .caja input::placeholder{font-family:inherit;color:var(--g2);font-weight:400}
 .caja button{border:0;border-radius:10px;background:var(--acc);color:var(--card);font:600 15px/1 inherit;padding:0 16px;cursor:pointer;white-space:nowrap}
 .linea{display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:28px;margin-top:8px;font-size:13.5px;color:var(--g)}
+.linea #msg{flex:1 1 200px;min-width:0}.linea .enlace{white-space:nowrap;margin-left:auto}
 .err{color:var(--sev)}
 .enlace{background:none;border:0;color:var(--g);font:inherit;font-size:13.5px;cursor:pointer;padding:4px 0}
 .nombre input,.campo{width:100%;border:1px solid var(--l);background:var(--card);color:var(--t);border-radius:10px;padding:12px;font:inherit;font-size:15px;outline:none}
@@ -73,6 +74,14 @@ h2{font-size:18px;margin:6px 0 4px}
 .msg.okm{color:var(--ok)}
 .toast{position:fixed;bottom:calc(22px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--t);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.on{opacity:1}
+.qr{display:flex;gap:8px;margin-top:10px}
+.qr button{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--l);background:var(--card);color:var(--t);border-radius:12px;padding:12px 10px;font:500 15px/1 inherit;cursor:pointer}
+.qr svg{width:20px;height:20px;flex:none}
+.scan{position:fixed;inset:0;z-index:20;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.scan video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.scan .marco{position:relative;width:min(70vw,300px);aspect-ratio:1;border-radius:22px;box-shadow:0 0 0 100vmax rgba(0,0,0,.55);border:3px solid rgba(255,255,255,.9)}
+.scan .txt{position:relative;color:#fff;font-size:15px;text-align:center;margin-top:22px;padding-inline:24px;max-width:420px}
+.scan .cerrar{position:absolute;bottom:calc(28px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:#fff;color:#111;border:0;border-radius:999px;padding:13px 28px;font:600 16px/1 inherit;cursor:pointer}
 .aviso{background:var(--medbg);color:var(--med);border-radius:12px;padding:12px 14px;font-size:14px;margin-bottom:14px}
 </style></head><body>
 
@@ -92,6 +101,11 @@ h2{font-size:18px;margin:6px 0 4px}
 <div class="caja">
 <input id="dir" type="text" placeholder="Pega la dirección del cliente" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="text">
 <button id="btn">Pegar</button>
+</div>
+<div class="qr">
+<button id="qrCam" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><rect x="7" y="7" width="4" height="4"/><rect x="13" y="13" width="4" height="4"/><path d="M13 7h4v4M7 13v4h4"/></svg>Escanear QR</button>
+<button id="qrFoto" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-4.5-4.5L5 21"/></svg>QR de una foto</button>
+<input id="qrArchivo" type="file" accept="image/*" hidden>
 </div>
 <div class="linea"><span id="msg"></span><button class="enlace" id="mostrarNombre">+ nombre del cliente</button></div>
 <div class="nombre" id="nombre" hidden><input id="cli" type="text" placeholder="Nombre del cliente (opcional)"></div>
@@ -126,6 +140,12 @@ h2{font-size:18px;margin:6px 0 4px}
 </section>
 </main>
 <div class="toast" id="toast" role="status"></div>
+<div class="scan" id="scan" hidden>
+<video id="video" playsinline muted></video>
+<div class="marco"></div>
+<div class="txt" id="scanTxt">Apunta la cámara al código QR de la wallet</div>
+<button class="cerrar" id="scanCerrar" type="button">Cancelar</button>
+</div>
 
 <script>
 "use strict";
@@ -331,6 +351,90 @@ function pintarHist(){
       const box=el("div",{className:"res",style:"margin:0 10px 12px"});pintar(box,x,false);it.after(box);};
     return it;}));
 }
+
+/* ================= QR ================= */
+const RE_BUSCA=/T[1-9A-HJ-NP-Za-km-z]{33}/g;
+function direccionDeQR(texto){
+  const t=String(texto||"").trim();
+  const encontradas=[...new Set(t.match(RE_BUSCA)||[])];
+  if(encontradas.length===1)return {dir:encontradas[0]};
+  if(encontradas.length>1)return {error:"El QR trae más de una dirección. Pídele al cliente un QR con una sola."};
+  if(/0x[0-9a-fA-F]{40}/.test(t))return {error:"Ese QR es de otra red (Ethereum/BSC), no de TRON. Pídele al cliente su dirección de USDT en red TRON (TRC20)."};
+  if(/^(bc1|[13])[a-zA-HJ-NP-Z0-9]{20,}/.test(t)||/^bitcoin:/i.test(t))return {error:"Ese QR es de Bitcoin, no de TRON."};
+  return {error:"No encontré una dirección TRON en ese QR."};
+}
+let lectorJsQR=null;
+function cargarJsQR(){
+  if(window.jsQR)return Promise.resolve(window.jsQR);
+  if(lectorJsQR)return lectorJsQR;
+  lectorJsQR=new Promise((ok,mal)=>{const s=document.createElement("script");
+    s.src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";s.onload=()=>ok(window.jsQR);s.onerror=()=>{lectorJsQR=null;mal(new Error("sin lector"));};document.head.append(s);});
+  return lectorJsQR;
+}
+let detector=null;
+async function obtenerDetector(){
+  if(detector!==null)return detector;
+  try{if("BarcodeDetector" in window&&(await BarcodeDetector.getSupportedFormats()).includes("qr_code")){detector=new BarcodeDetector({formats:["qr_code"]});return detector;}}catch(_){}
+  detector=false;return detector;
+}
+const lienzo=document.createElement("canvas");
+async function leerQR(fuente,ancho,alto){
+  const d=await obtenerDetector();
+  if(d){const r=await d.detect(fuente);return r.length?r[0].rawValue:null;}
+  const jsQR=await cargarJsQR();
+  const esc=Math.min(1,1000/Math.max(ancho,alto));
+  lienzo.width=Math.round(ancho*esc);lienzo.height=Math.round(alto*esc);
+  const cx=lienzo.getContext("2d",{willReadFrequently:true});cx.drawImage(fuente,0,0,lienzo.width,lienzo.height);
+  const img=cx.getImageData(0,0,lienzo.width,lienzo.height);
+  const r=jsQR(img.data,img.width,img.height,{inversionAttempts:"attemptBoth"});return r?r.data:null;
+}
+function usarQR(texto){
+  const r=direccionDeQR(texto);
+  if(r.error){$("msg").textContent=r.error;$("msg").className="err";return false;}
+  $("dir").value=r.dir;ultima="";$("res").hidden=true;
+  toast("Dirección leída del QR");
+  if(estado())iniciar();
+  return true;
+}
+/* cámara */
+let flujo=null,escaneando=false;
+async function abrirCamara(){
+  if(!navigator.mediaDevices?.getUserMedia){toast("Este navegador no permite usar la cámara");return;}
+  try{flujo=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720}},audio:false});}
+  catch(e){$("msg").textContent=e.name==="NotAllowedError"?"La cámara está bloqueada para esta app. Permítela en Chrome → ⋮ → Configuración → Configuración de sitios → Cámara.":"No se pudo abrir la cámara.";$("msg").className="err";return;}
+  const v=$("video");v.srcObject=flujo;$("scan").hidden=false;$("scanTxt").textContent="Apunta la cámara al código QR de la wallet";
+  try{await v.play();}catch(_){}
+  escaneando=true;let ultimo=0;
+  const ciclo=async t=>{
+    if(!escaneando)return;
+    if(t-ultimo>220&&v.readyState>=2){ultimo=t;
+      try{const txt=await leerQR(v,v.videoWidth,v.videoHeight);
+        if(txt){const r=direccionDeQR(txt);
+          if(r.dir){if(navigator.vibrate)navigator.vibrate(60);cerrarCamara();usarQR(txt);return;}
+          $("scanTxt").textContent=r.error;}}
+      catch(e){$("scanTxt").textContent="No se pudo cargar el lector de QR. Revisa tu internet.";}
+    }
+    requestAnimationFrame(ciclo);
+  };
+  requestAnimationFrame(ciclo);
+}
+function cerrarCamara(){escaneando=false;$("scan").hidden=true;if(flujo){flujo.getTracks().forEach(t=>t.stop());flujo=null;}$("video").srcObject=null;}
+$("qrCam").onclick=abrirCamara;
+$("scanCerrar").onclick=cerrarCamara;
+document.addEventListener("visibilitychange",()=>{if(document.hidden&&escaneando)cerrarCamara();});
+/* foto */
+$("qrFoto").onclick=()=>{$("qrArchivo").value="";$("qrArchivo").click();};
+$("qrArchivo").onchange=async()=>{
+  const f=$("qrArchivo").files[0];if(!f)return;
+  $("msg").textContent="Leyendo el QR…";$("msg").className="";
+  try{
+    const bmp=await createImageBitmap(f);
+    let txt=await leerQR(bmp,bmp.width,bmp.height);
+    if(!txt&&detector){detector=false;txt=await leerQR(bmp,bmp.width,bmp.height);detector=null;}
+    if(!txt){$("msg").textContent="No encontré un código QR en esa imagen. Prueba con una captura más nítida o recortada.";$("msg").className="err";return;}
+    $("msg").textContent="";usarQR(txt);
+  }catch(e){$("msg").textContent="No se pudo leer la imagen.";$("msg").className="err";}
+};
 
 /* ajustes */
 $("clave").value=clave();
