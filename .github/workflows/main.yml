@@ -1,0 +1,223 @@
+name: Vigia de mis wallets
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+    - cron: "17 18 1 * *"
+  workflow_dispatch:
+    inputs:
+      prueba:
+        description: "Enviar un aviso de prueba al celular"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vigia
+  cancel-in-progress: false
+
+jobs:
+  vigilar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: estado
+          key: vigia-${{ github.run_id }}
+          restore-keys: vigia-
+      - name: Revisar mis wallets
+        env:
+          WALLETS: ${{ secrets.WALLETS }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          TRONGRID_KEY: ${{ secrets.TRONGRID_KEY }}
+          PRUEBA: ${{ github.event.inputs.prueba }}
+        run: |
+          python3 - <<'PY'
+          # Vigia de tus wallets (USDT en TRON) - corre en GitHub cada ~5 minutos.
+          # Avisa al celular (app ntfy) si: Tether congela una de tus wallets, sale dinero,
+          # llega dinero o llega una transferencia sospechosa (posible direccion imitadora).
+          # PRIVACIDAD: este repositorio es publico. Las direcciones viven en un "secret"
+          # y el programa NUNCA las escribe en el registro; el estado guardado no las contiene.
+          import hashlib, json, os, sys, time, urllib.request
+          from datetime import datetime, timedelta, timezone
+
+          USDT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
+          MX = timezone(timedelta(hours=-6))
+          ESTADO = "estado/estado.json"
+          CLAVE = os.environ.get("TRONGRID_KEY", "").strip()
+          TEMA = os.environ.get("NTFY_TOPIC", "").strip()
+          WALLETS = list(dict.fromkeys(w.strip() for w in os.environ.get("WALLETS", "").replace(",", " ").split() if w.strip().startswith("T")))
+          B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+
+
+          def h(x):  # huella de una direccion (para no guardar la direccion)
+              return hashlib.sha256(("vigia|" + x).encode()).hexdigest()[:16]
+
+
+          def corta(d):
+              return f"{d[:4]}…{d[-5:]}"
+
+
+          def hex20(d):
+              n = 0
+              for c in d:
+                  n = n * 58 + B58.index(c)
+              return n.to_bytes(25, "big")[1:21].hex()
+
+
+          def pedir(url, cuerpo=None):
+              for intento in range(4):
+                  time.sleep(0.3 if CLAVE else 1.2)
+                  enc = {"Accept": "application/json", "User-Agent": "vigia-wallets"}
+                  if CLAVE:
+                      enc["TRON-PRO-API-KEY"] = CLAVE
+                  datos = None
+                  if cuerpo is not None:
+                      enc["Content-Type"] = "application/json"
+                      datos = json.dumps(cuerpo).encode()
+                  try:
+                      with urllib.request.urlopen(urllib.request.Request(url, datos, enc), timeout=25) as r:
+                          return json.loads(r.read())
+                  except Exception:
+                      time.sleep(2 * (intento + 1))
+              raise RuntimeError("TronGrid no respondio")
+
+
+          def congelada(d):
+              j = pedir("https://api.trongrid.io/wallet/triggerconstantcontract",
+                        {"owner_address": d, "contract_address": USDT, "function_selector": "isBlackListed(address)",
+                         "parameter": hex20(d).rjust(64, "0"), "visible": True})
+              r = (j.get("constant_result") or [None])[0]
+              if r is None:
+                  raise RuntimeError("respuesta inesperada")
+              return int(r or "0", 16) == 1
+
+
+          def movimientos(d, desde_ms):
+              url = (f"https://api.trongrid.io/v1/accounts/{d}/transactions/trc20?contract_address={USDT}"
+                     f"&only_confirmed=true&limit=100&order_by=block_timestamp,asc&min_timestamp={desde_ms}")
+              out = []
+              for t in pedir(url).get("data") or []:
+                  if t.get("type") != "Transfer":
+                      continue
+                  dec = int((t.get("token_info") or {}).get("decimals", 6))
+                  out.append({"id": t["transaction_id"], "ms": t["block_timestamp"], "de": t["from"], "para": t["to"],
+                              "monto": int(t["value"]) / 10 ** dec})
+              return out
+
+
+          def avisar(titulo, texto, prioridad=3, etiqueta="bell"):
+              if os.environ.get("SOLO_PRUEBA_LOCAL"):
+                  print("AVISO:", titulo, "|", texto)
+                  return
+              cuerpo = json.dumps({"topic": TEMA, "title": titulo, "message": texto, "priority": prioridad,
+                                   "tags": [etiqueta]}).encode()
+              for intento in range(3):
+                  try:
+                      urllib.request.urlopen(urllib.request.Request("https://ntfy.sh/", cuerpo,
+                                                                    {"Content-Type": "application/json"}), timeout=20)
+                      return
+                  except Exception:
+                      time.sleep(3)
+              print("No se pudo enviar un aviso a ntfy")
+
+
+          def usd(x):
+              return f"{x:,.2f} USDT"
+
+
+          def main():
+              if not TEMA:
+                  print("Falta el secret NTFY_TOPIC"); return 1
+              if not WALLETS:
+                  print("Falta el secret WALLETS"); return 1
+              try:
+                  estado = json.load(open(ESTADO))
+              except Exception:
+                  estado = {}
+              ahora = datetime.now(MX)
+              ahora_ms = int(time.time() * 1000)
+              nuevo = not estado
+              if os.environ.get("PRUEBA") == "true":
+                  avisar("✅ Vigía conectado", f"Estoy vigilando tus {len(WALLETS)} wallets. Te avisaré aquí si pasa algo.", 3, "white_check_mark")
+              desde = max(estado.get("ultimo_ms", ahora_ms - 20 * 60 * 1000), ahora_ms - 24 * 3600 * 1000) - 60 * 1000
+              vistos = set(estado.get("vistos", []))
+              congeladas = set(estado.get("congeladas", []))
+              destinos = set(estado.get("destinos", []))   # solo los ultimos 5 caracteres de a quien le has enviado
+              mias = set(WALLETS)
+              fallas = 0
+              for w in WALLETS:
+                  try:
+                      if congelada(w):
+                          if h(w) not in congeladas:
+                              avisar("🔴 Tether congeló tu wallet", f"Tu wallet {corta(w)} está en la lista negra de Tether: su USDT quedó congelado. No le envíes nada.", 5, "rotating_light")
+                              congeladas.add(h(w))
+                      elif h(w) in congeladas:
+                          avisar("🟢 Wallet descongelada", f"Tether ya quitó tu wallet {corta(w)} de su lista negra.", 4, "green_circle")
+                          congeladas.discard(h(w))
+                  except Exception:
+                      fallas += 1
+                  try:
+                      for t in movimientos(w, desde):
+                          clave_tx = h(t["id"] + w)
+                          if clave_tx in vistos:
+                              continue
+                          vistos.add(clave_tx)
+                          hora = datetime.fromtimestamp(t["ms"] / 1000, MX).strftime("%H:%M")
+                          if t["de"] == w and t["para"] != w:
+                              destinos.add(t["para"][-5:])
+                              if nuevo:
+                                  continue
+                              avisar("💸 Salió dinero de tu wallet", f"Salieron {usd(t['monto'])} de {corta(w)} hacia {corta(t['para'])} a las {hora}. Si no fuiste tú, revisa de inmediato.", 4, "money_with_wings")
+                          elif t["para"] == w and t["de"] != w:
+                              if nuevo:
+                                  continue
+                              if t["de"] not in mias and t["monto"] < 10 and (t["de"][-5:] in destinos or t["monto"] < 1):
+                                  avisar("⚠️ Posible dirección imitadora", f"{corta(t['de'])} te mandó {usd(t['monto'])} a {corta(w)}. Puede ser una imitadora: NUNCA copies direcciones de tu historial, cópialas siempre del cliente.", 4, "warning")
+                              else:
+                                  avisar("💰 Llegó dinero", f"Llegaron {usd(t['monto'])} a {corta(w)} desde {corta(t['de'])} a las {hora}.", 3, "moneybag")
+                  except Exception:
+                      fallas += 1
+              # resumen diario a partir de las 9:00 (hora de Mexico)
+              hoy = ahora.strftime("%Y-%m-%d")
+              if ahora.hour >= 9 and estado.get("ultimo_resumen") != hoy and not nuevo:
+                  txt = f"Tus {len(WALLETS)} wallets están siendo vigiladas."
+                  txt += f" Congeladas: {len(congeladas)}." if congeladas else " Ninguna congelada."
+                  avisar("🟢 Vigía activo", txt, 2, "green_circle")
+                  estado["ultimo_resumen"] = hoy
+              if fallas >= len(WALLETS) * 2:
+                  estado["fallas_seguidas"] = estado.get("fallas_seguidas", 0) + 1
+                  if estado["fallas_seguidas"] == 6:
+                      avisar("🟠 Vigía sin conexión", "Llevo varios intentos sin poder consultar la red TRON. Sigo intentando.", 3, "warning")
+              else:
+                  estado["fallas_seguidas"] = 0
+                  estado["ultimo_ms"] = ahora_ms
+              estado.setdefault("ultimo_ms", ahora_ms)
+              estado.update(vistos=sorted(vistos)[-3000:], congeladas=sorted(congeladas), destinos=sorted(destinos)[-500:])
+              os.makedirs("estado", exist_ok=True)
+              json.dump(estado, open(ESTADO, "w"))
+              print(f"Revisión terminada: {len(WALLETS)} wallets, {fallas} consultas fallidas.")
+              return 0
+
+
+          if __name__ == "__main__":
+              sys.exit(main())
+          PY
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: estado
+          key: vigia-${{ github.run_id }}
+      - name: Mantener activo (una vez al mes)
+        if: github.event.schedule == '17 18 1 * *'
+        run: |
+          git config user.name "vigia"
+          git config user.email "vigia@users.noreply.github.com"
+          date -u > .vigia_activo.txt
+          git add .vigia_activo.txt
+          git commit -m "Vigia activo"
+          git push
