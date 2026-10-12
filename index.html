@@ -68,6 +68,12 @@ h2{font-size:18px;margin:6px 0 4px}
 .item .tx b{display:block;font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .item .tx code{font-size:13px;color:var(--g)}
 .item .h{color:var(--g2);font-size:13px;white-space:nowrap}
+.mia{cursor:default}
+.mia code{font:400 14px/1.4 ui-monospace,"Roboto Mono",Menlo,monospace;color:var(--g);word-break:break-all}
+.item.mia .tx code b{display:inline;font-size:inherit;font-weight:700;color:var(--t);white-space:normal}
+.quitar{border:0;background:none;color:var(--g);font:inherit;font-size:14px;padding:6px 4px;cursor:pointer}
+.quitar.conf{color:var(--sev);font-weight:600}
+.pasos{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 6px}
 .vac{padding:26px;text-align:center;color:var(--g);font-size:15px}
 .bloque{display:grid;gap:10px;margin-bottom:30px}
 .msg{font-size:14px;min-height:20px;color:var(--g)}
@@ -90,6 +96,7 @@ h2{font-size:18px;margin:6px 0 4px}
 <nav>
 <a data-t="revisar" class="on">Revisar</a>
 <a data-t="historial">Historial</a>
+<a data-t="wallets">Wallets</a>
 <a data-t="ajustes">Ajustes</a>
 </nav>
 </div></header>
@@ -118,6 +125,18 @@ h2{font-size:18px;margin:6px 0 4px}
 <h2>Historial</h2>
 <p class="sub">Tus revisiones en este celular.</p>
 <div class="lista" id="hist"></div>
+</section>
+
+<section class="tab" id="t-wallets" hidden>
+<h2>Mis wallets</h2>
+<p class="sub">Las wallets que cuida el vigía. Cuando cambies de wallet: agrega la nueva, quita la vieja y luego actualiza el vigía con los dos botones de abajo.</p>
+<div class="caja">
+<input id="nuevaMia" type="text" placeholder="Pega tu wallet nueva" autocomplete="off" autocapitalize="off" spellcheck="false">
+<button id="agregarMia">Pegar</button>
+</div>
+<div class="lista" id="mias" style="margin-top:14px"></div>
+<div class="pasos"><button class="btn pri" id="copiarMias" type="button">1 · Copiar lista</button><button class="btn" id="abrirVigia" type="button">2 · Abrir el vigía en GitHub</button></div>
+<p class="sub" style="margin:0">En GitHub: toca la caja grande, pega y presiona <b>Update secret</b>. Pega siempre la lista completa.</p>
 </section>
 
 <section class="tab" id="t-ajustes" hidden>
@@ -298,6 +317,7 @@ async function revisar(d,cliente,prog){
   }catch(e){errores.push("historial");}
   for(const h of parecidas(d).slice(0,3))
     amarillos.push(`Se parece a ${corta(h.direccion)} (revisada el ${new Date(h.fecha).toLocaleDateString("es-MX")}${h.cliente?", "+h.cliente:""}) pero no es la misma. Confirma la dirección completa con el cliente.`);
+  if(LS.get("mias",[]).includes(d))info.push("Es una de TUS wallets.");
   const errs=[...new Set(errores)];
   if(errs.length)amarillos.push("No se pudo verificar todo ("+errs.join(", ")+"). Repite la revisión.");
   const resultado=rojos.length?ROJO:amarillos.length?AMARILLO:VERDE;
@@ -315,7 +335,7 @@ async function revisar(d,cliente,prog){
 const EST={"LIMPIA":{c:"ok",i:"✅",s:"Puedes enviar"},"RIESGO MEDIO":{c:"med",i:"🟠",s:"Revisa antes de enviar"},"MALA":{c:"sev",i:"🔴",s:"No le envíes"}};
 function ir(t){document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("on",a.dataset.t===t));
   document.querySelectorAll(".tab").forEach(s=>s.hidden=s.id!=="t-"+t);
-  if(t==="historial")pintarHist();if(t==="revisar")refrescarAviso();}
+  if(t==="historial")pintarHist();if(t==="wallets")pintarMias();if(t==="revisar")refrescarAviso();}
 document.querySelectorAll("nav a,[data-ir]").forEach(a=>a.onclick=()=>ir(a.dataset.t||a.dataset.ir));
 function refrescarAviso(){$("sinClave").hidden=!!clave();}
 
@@ -621,5 +641,37 @@ function botonBorrar(){const z=$("borrarZona");
       el("button",{className:"btn pri",textContent:"Sí, borrar",onclick:()=>{LS.del("hist");toast("Historial borrado");botonBorrar();}}),
       el("button",{className:"btn",textContent:"Cancelar",onclick:botonBorrar}));}}));}
 botonBorrar();
+
+/* ================= mis wallets (para el vigía) ================= */
+function pintarMias(){
+  const lista=LS.get("mias",[]);const cont=$("mias");
+  if(!lista.length)cont.replaceChildren(el("div",{className:"vac",textContent:"Todavía no agregas tus wallets"}));
+  else cont.replaceChildren(...lista.map(d=>{
+    const q=el("button",{className:"quitar",textContent:"Quitar",type:"button"});
+    q.onclick=()=>{if(!q.classList.contains("conf")){q.classList.add("conf");q.textContent="¿Quitar?";setTimeout(()=>{q.classList.remove("conf");q.textContent="Quitar";},3000);return;}
+      LS.set("mias",LS.get("mias",[]).filter(x=>x!==d));pintarMias();toast("Quitada. Ahora actualiza el vigía");};
+    const cod=el("code");cod.append(el("b",{textContent:d.slice(0,6)}),d.slice(6,-6),el("b",{textContent:d.slice(-6)}));
+    return el("div",{className:"item mia"},[el("div",{className:"tx"},cod),q]);}));
+  $("copiarMias").disabled=!lista.length;estadoMia();
+}
+function estadoMia(){$("agregarMia").textContent=$("nuevaMia").value.trim()?"Agregar":"Pegar";}
+async function agregarMias(texto){
+  const cand=[...new Set((texto.match(/T[1-9A-HJ-NP-Za-km-z]{33}/g)||[]))];
+  if(!cand.length){toast("No encontré una dirección TRON válida");return;}
+  const lista=LS.get("mias",[]);let n=0;
+  for(const d of cand){try{await tronHex20(d);}catch(e){toast(corta(d)+": "+e.message);continue;}
+    if(!lista.includes(d)){lista.push(d);n++;}}
+  if(!n){toast("Esa wallet ya está en tu lista");return;}
+  LS.set("mias",lista);$("nuevaMia").value="";pintarMias();toast(n===1?"Agregada. Ahora actualiza el vigía":`${n} agregadas. Ahora actualiza el vigía`);
+}
+$("nuevaMia").addEventListener("input",estadoMia);
+$("nuevaMia").addEventListener("keydown",e=>{if(e.key==="Enter")agregarMias($("nuevaMia").value);});
+$("agregarMia").onclick=async()=>{
+  let v=$("nuevaMia").value.trim();
+  if(!v){try{v=(await navigator.clipboard.readText()).trim();}catch(_){$("nuevaMia").focus();toast("Mantén presionada la caja y elige Pegar");return;}}
+  agregarMias(v);};
+$("copiarMias").onclick=async()=>{const l=LS.get("mias",[]);if(!l.length)return;
+  try{await navigator.clipboard.writeText(l.join(" "));toast(`Lista copiada (${l.length} wallet${l.length===1?"":"s"})`);}catch(_){toast("No se pudo copiar");}};
+$("abrirVigia").onclick=()=>window.open("https://github.com/carlos-leal-verificador/verificador/settings/secrets/actions/WALLETS","_blank");
 refrescarAviso();estado();
 </script></body></html>
