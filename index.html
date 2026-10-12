@@ -134,6 +134,10 @@ h2{font-size:18px;margin:6px 0 4px}
 <input id="nuevaMia" type="text" placeholder="Pega tu wallet nueva" autocomplete="off" autocapitalize="off" spellcheck="false">
 <button id="agregarMia">Pegar</button>
 </div>
+<div class="qr">
+<button id="qrCamMia" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><rect x="7" y="7" width="4" height="4"/><rect x="13" y="13" width="4" height="4"/><path d="M13 7h4v4M7 13v4h4"/></svg>Escanear QR</button>
+<button id="qrFotoMia" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-4.5-4.5L5 21"/></svg>QR de una foto</button>
+</div>
 <div class="lista" id="mias" style="margin-top:14px"></div>
 <div class="pasos"><button class="btn pri" id="copiarMias" type="button">1 · Copiar lista</button><button class="btn" id="abrirVigia" type="button">2 · Abrir el vigía en GitHub</button></div>
 <p class="sub" style="margin:0">En GitHub: toca la caja grande, pega y presiona <b>Update secret</b>. Pega siempre la lista completa.</p>
@@ -579,8 +583,11 @@ async function leerQR(fuente,ancho,alto){
   const img=cx.getImageData(0,0,lienzo.width,lienzo.height);
   const r=jsQR(img.data,img.width,img.height,{inversionAttempts:"attemptBoth"});return r?r.data:null;
 }
+let qrDestino="revisar";
+function avisoQR(t,esError){if(qrDestino==="wallets"){if(t)toast(t);return;}$("msg").textContent=t;$("msg").className=esError?"err":"";}
 function usarQR(texto){
   const r=direccionDeQR(texto);
+  if(qrDestino==="wallets"){if(r.error){toast(r.error);return false;}agregarMias(r.dir);return true;}
   if(r.error){$("msg").textContent=r.error;$("msg").className="err";return false;}
   $("dir").value=r.dir;ultima="";$("res").hidden=true;
   toast("Dirección leída del QR");
@@ -592,7 +599,7 @@ let flujo=null,escaneando=false;
 async function abrirCamara(){
   if(!navigator.mediaDevices?.getUserMedia){toast("Este navegador no permite usar la cámara");return;}
   try{flujo=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720}},audio:false});}
-  catch(e){$("msg").textContent=e.name==="NotAllowedError"?"La cámara está bloqueada para esta app. Permítela en Chrome → ⋮ → Configuración → Configuración de sitios → Cámara.":"No se pudo abrir la cámara.";$("msg").className="err";return;}
+  catch(e){avisoQR(e.name==="NotAllowedError"?"La cámara está bloqueada para esta app. Permítela en Chrome → ⋮ → Configuración → Configuración de sitios → Cámara.":"No se pudo abrir la cámara.",true);return;}
   const v=$("video");v.srcObject=flujo;$("scan").hidden=false;$("scanTxt").textContent="Apunta la cámara al código QR de la wallet";
   try{await v.play();}catch(_){}
   escaneando=true;let ultimo=0;
@@ -610,21 +617,23 @@ async function abrirCamara(){
   requestAnimationFrame(ciclo);
 }
 function cerrarCamara(){escaneando=false;$("scan").hidden=true;if(flujo){flujo.getTracks().forEach(t=>t.stop());flujo=null;}$("video").srcObject=null;}
-$("qrCam").onclick=abrirCamara;
+$("qrCam").onclick=()=>{qrDestino="revisar";abrirCamara();};
+$("qrCamMia").onclick=()=>{qrDestino="wallets";abrirCamara();};
 $("scanCerrar").onclick=cerrarCamara;
 document.addEventListener("visibilitychange",()=>{if(document.hidden&&escaneando)cerrarCamara();});
 /* foto */
-$("qrFoto").onclick=()=>{$("qrArchivo").value="";$("qrArchivo").click();};
+$("qrFoto").onclick=()=>{qrDestino="revisar";$("qrArchivo").value="";$("qrArchivo").click();};
+$("qrFotoMia").onclick=()=>{qrDestino="wallets";$("qrArchivo").value="";$("qrArchivo").click();};
 $("qrArchivo").onchange=async()=>{
   const f=$("qrArchivo").files[0];if(!f)return;
-  $("msg").textContent="Leyendo el QR…";$("msg").className="";
+  avisoQR("Leyendo el QR…");
   try{
     const bmp=await createImageBitmap(f);
     let txt=await leerQR(bmp,bmp.width,bmp.height);
     if(!txt&&detector){detector=false;txt=await leerQR(bmp,bmp.width,bmp.height);detector=null;}
-    if(!txt){$("msg").textContent="No encontré un código QR en esa imagen. Prueba con una captura más nítida o recortada.";$("msg").className="err";return;}
-    $("msg").textContent="";usarQR(txt);
-  }catch(e){$("msg").textContent="No se pudo leer la imagen.";$("msg").className="err";}
+    if(!txt){avisoQR("No encontré un código QR en esa imagen. Prueba con una captura más nítida o recortada.",true);return;}
+    if(qrDestino!=="wallets")$("msg").textContent="";usarQR(txt);
+  }catch(e){avisoQR("No se pudo leer la imagen.",true);}
 };
 
 /* ajustes */
