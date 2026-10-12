@@ -129,6 +129,13 @@ h2{font-size:18px;margin:6px 0 4px}
 <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" id="guardarClave">Guardar clave</button><button class="btn" id="borrarClave">Borrar clave</button></div>
 </div>
 <div class="bloque">
+<h2>Nombre en el comprobante</h2>
+<p class="sub" style="margin:0">Aparece al pie de la imagen como "Verificado por …".</p>
+<input class="campo" id="firma" type="text" placeholder="Carlos Leal Rodríguez" autocomplete="off">
+<div class="msg" id="firmaMsg"></div>
+<div><button class="btn pri" id="guardarFirma">Guardar nombre</button></div>
+</div>
+<div class="bloque">
 <h2>Historial</h2>
 <p class="sub" style="margin:0">Borra todas las revisiones guardadas en este celular.</p>
 <div style="display:flex;gap:8px;flex-wrap:wrap" id="borrarZona"><button class="btn" id="borrarHist">Borrar historial</button></div>
@@ -214,6 +221,16 @@ async function listaOFAC(){
   }
   LS.set("ofac",{t:Date.now(),l});return new Set(l);
 }
+async function fechaCongelada(d){ /* Tronscan: cuándo la congeló Tether (si falla, null) */
+  const ctl=new AbortController();const to=setTimeout(()=>ctl.abort(),9000);
+  try{
+    const r=await fetch(`https://apilist.tronscanapi.com/api/stableCoin/blackList?blackAddress=${d}&start=0&limit=20&sort=2&direction=2`,{signal:ctl.signal});
+    if(!r.ok)return null;const j=await r.json();
+    const t=(j.data||[]).filter(x=>!x.blackAddress||x.blackAddress===d).map(x=>Number(x.time)).filter(x=>x>0).map(x=>x<1e12?x*1000:x);
+    return t.length?Math.max(...t):null;
+  }catch(_){return null;}finally{clearTimeout(to);}
+}
+const fechaCorta=ms=>new Date(ms).toLocaleDateString("es-MX",{day:"numeric",month:"short",year:"numeric"});
 async function goplus(d){
   const r=await fetch(`https://api.gopluslabs.io/api/v1/address_security/${d}?chain_id=tron`);
   if(!r.ok)throw new Error("GoPlus respondió "+r.status);
@@ -241,13 +258,13 @@ function parecidas(d){
   return Object.values(vistas).filter(h=>{const c=h.direccion;return c.slice(-5)===d.slice(-5)||(c.slice(1,5)===d.slice(1,5)&&c.slice(-4)===d.slice(-4))||c.slice(0,7)===d.slice(0,7);});
 }
 async function revisar(d,cliente,prog){
-  const t0=performance.now();const rojos=[],amarillos=[],info=[],fuentes=[],errores=[];
+  const t0=performance.now();const rojos=[],amarillos=[],info=[],fuentes=[],errores=[],fechas=[];
   await tronHex20(d);
   prog("Revisando la dirección…");
   let ofac=null;
   try{ofac=await listaOFAC();const hit=ofac.has(d);fuentes.push({f:"OFAC",e:"ok",h:hit});if(hit)rojos.push("Aparece en la lista de sanciones de la OFAC.");}
   catch(e){fuentes.push({f:"OFAC",e:"error"});errores.push("OFAC");}
-  try{const c=await congeladaTether(d);fuentes.push({f:"Tether (lista negra)",e:"ok",h:c});if(c)rojos.push("Tether tiene congelado el USDT de esta dirección.");}
+  try{const c=await congeladaTether(d);fuentes.push({f:"Tether (lista negra)",e:"ok",h:c});if(c){const fc=await fechaCongelada(d);rojos.push("Tether tiene congelado el USDT de esta dirección"+(fc?` desde el ${fechaCorta(fc)}.`:"."));if(fc)fechas.push([fc,"congelada por Tether"]);}}
   catch(e){fuentes.push({f:"Tether (lista negra)",e:"error"});errores.push("Tether");}
   try{const b=await goplus(d);fuentes.push({f:"GoPlus",e:"ok",h:b.length>0});
       if(b.length)(b.some(x=>GOPLUS_SEVERAS.has(x))?rojos:amarillos).push("GoPlus la marca: "+b.join(", ").replace(/_/g," ")+".");}
@@ -261,7 +278,8 @@ async function revisar(d,cliente,prog){
     else if(txs.length>=TX_LEER)info.push(`Se revisaron sus ${TX_LEER} movimientos más recientes.`);
     const g={};
     for(const t of txs){const otra=t.de===d?t.para:t.de;if(!otra||otra===d)continue;
-      const c=g[otra]||(g[otra]={rec:0,env:0,nRec:0,nEnv:0,nDust:0});
+      const c=g[otra]||(g[otra]={rec:0,env:0,nRec:0,nEnv:0,nDust:0,primera:null});
+      if(t.ms&&(!c.primera||t.ms<c.primera))c.primera=t.ms;
       if(t.para===d){c.rec+=t.monto;c.nRec++;if(t.monto<1)c.nDust++;}else{c.env+=t.monto;c.nEnv++;}}
     cp.total=Object.keys(g).length;
     const top=Object.entries(g).filter(([,c])=>!(c.nEnv===0&&c.nRec>0&&c.nDust===c.nRec))
@@ -270,11 +288,12 @@ async function revisar(d,cliente,prog){
     for(const [a,c] of top){
       prog(`Revisando contrapartes… ${++n} de ${top.length}`);
       const p=[];if(ofac&&ofac.has(a))p.push("sancionada por OFAC");
-      try{if(await congeladaTether(a))p.push("congelada por Tether");}catch(_){errores.push("Tether (contrapartes)");}
+      try{if(await congeladaTether(a)){const fc=await fechaCongelada(a);p.push("congelada por Tether"+(fc?` desde el ${fechaCorta(fc)}`:""));}}catch(_){errores.push("Tether (contrapartes)");}
       cp.revisadas++;
       if(p.length){const rel=[];if(c.rec)rel.push(`le envió ${c.rec.toLocaleString("es-MX",{maximumFractionDigits:2})} USDT`);
         if(c.env)rel.push(`recibió ${c.env.toLocaleString("es-MX",{maximumFractionDigits:2})} USDT de ella`);
-        rojos.push(`Contraparte ${corta(a)} (${rel.join(" y ")}) está ${p.join(" y ")}.`);}
+        rojos.push(`Contraparte ${corta(a)} (${rel.join(" y ")}) está ${p.join(" y ")}.`+(c.primera?` Primer movimiento con ella: ${fechaCorta(c.primera)}.`:""));
+        if(c.primera)fechas.push([c.primera,"primer movimiento con una contraparte contaminada"]);}
     }
   }catch(e){errores.push("historial");}
   for(const h of parecidas(d).slice(0,3))
@@ -282,7 +301,13 @@ async function revisar(d,cliente,prog){
   const errs=[...new Set(errores)];
   if(errs.length)amarillos.push("No se pudo verificar todo ("+errs.join(", ")+"). Repite la revisión.");
   const resultado=rojos.length?ROJO:amarillos.length?AMARILLO:VERDE;
-  return {fecha:new Date().toISOString(),direccion:d,cliente:cliente||"",resultado,motivos:[...rojos,...amarillos],info,fuentes,
+  let desde=null;
+  if(resultado!==VERDE&&fechas.length){const [ms,motivo]=fechas.sort((a,b)=>a[0]-b[0])[0];desde={fecha:new Date(ms).toISOString(),motivo};}
+  const soloFallas=!rojos.length&&amarillos.length===1&&errs.length>0;
+  if(resultado!==VERDE&&!desde&&!soloFallas){ /* sin fecha en las fuentes: primera vez que TÚ la detectaste */
+    const previas=LS.get("hist",[]).filter(h=>h.direccion===d&&h.resultado!=="LIMPIA").map(h=>Date.parse(h.fecha)).filter(x=>x>0);
+    desde={fecha:new Date(Math.min(Date.now(),...previas)).toISOString(),motivo:"primera detección en tus revisiones",tipo:"deteccion"};}
+  return {desde,fecha:new Date().toISOString(),direccion:d,cliente:cliente||"",resultado,motivos:[...rojos,...amarillos],info,fuentes,
           saldo,cp,segundos:Math.round((performance.now()-t0)/100)/10};
 }
 
@@ -322,13 +347,14 @@ async function iniciar(){
 function pintar(box,r,acciones){
   const e=EST[r.resultado];box.style.borderColor=`var(--${e.c}bd)`;
   const kids=[el("div",{className:"v",style:`background:var(--${e.c}bg)`},[el("div",{className:"i",textContent:e.i}),
-    el("div",{className:"w",textContent:r.resultado,style:`color:var(--${e.c})`}),el("div",{className:"s",textContent:e.s+(r.cliente?" · "+r.cliente:"")})])];
+    el("div",{className:"w",textContent:r.resultado,style:`color:var(--${e.c})`}),el("div",{className:"s",textContent:e.s+(r.cliente?" · "+r.cliente:"")})].concat(textoDesde(r)?[el("div",{textContent:textoDesde(r),style:`color:var(--${e.c});font-size:13px;font-weight:600;margin-top:6px`})]:[]))];
   const dd=el("div",{className:"dir"});dd.append(el("b",{textContent:r.direccion.slice(0,6)}),r.direccion.slice(6,-6),el("b",{textContent:r.direccion.slice(-6)}));kids.push(dd);
   if(r.motivos.length){const m=el("div",{className:"motivos",style:`background:var(--${e.c}bg);color:var(--${e.c})`});r.motivos.forEach(x=>m.append(el("div",{textContent:x})));kids.push(m);}
   if(acciones){const a=el("div",{className:"acc"});
     if(e.c!=="sev")a.append(el("button",{className:"btn pri",textContent:"Copiar dirección",onclick:async()=>{try{await navigator.clipboard.writeText(r.direccion);toast("Dirección copiada");}catch(_){toast("No se pudo copiar");}}}));
+    a.append(el("button",{className:"btn",textContent:"Comprobante",onclick:async ev=>{const b=ev.currentTarget;b.disabled=true;try{await compartirComprobante(r,firma());}catch(_){toast("No se pudo crear el comprobante");}finally{b.disabled=false;}}}));
     a.append(el("button",{className:"btn",textContent:"Nueva revisión",onclick:()=>{$("dir").value="";$("cli").value="";ultima="";box.hidden=true;estado();$("dir").focus();}}));
-    kids.push(a);}else kids.push(el("div",{style:"height:14px"}));
+    kids.push(a);}else kids.push(el("div",{className:"acc"},el("button",{className:"btn",textContent:"Comprobante",onclick:async ev=>{const b=ev.currentTarget;b.disabled=true;try{await compartirComprobante(r,firma());}catch(_){toast("No se pudo crear el comprobante");}finally{b.disabled=false;}}})));
   const filas=[["Revisado",new Date(r.fecha).toLocaleString("es-MX",{dateStyle:"medium",timeStyle:"short"})+` · ${r.segundos} s`]];
   if(r.saldo!=null)filas.push(["Saldo",r.saldo.toLocaleString("es-MX",{maximumFractionDigits:2})+" USDT"]);
   if(r.cp.revisadas)filas.push(["Contrapartes revisadas",`${r.cp.revisadas} de ${r.cp.total}`]);
@@ -351,6 +377,151 @@ function pintarHist(){
       const box=el("div",{className:"res",style:"margin:0 10px 12px"});pintar(box,x,false);it.after(box);};
     return it;}));
 }
+
+/* ================= comprobante en imagen ================= */
+function textoDesde(r){
+  if(!r||!r.desde||!r.desde.fecha||r.resultado==="LIMPIA")return "";
+  const f=new Date(r.desde.fecha);if(isNaN(f))return "";
+  const mala=r.resultado==="MALA"||r.resultado==="NO ENVIAR";
+  const txt=f.toLocaleDateString("es-MX",{day:"numeric",month:"long",year:"numeric"});
+  if(r.desde.tipo==="deteccion")return (mala?"Detectada como mala el ":"Detectada en riesgo el ")+txt;
+  return (mala?"Mala desde el ":"En riesgo desde el ")+txt;
+}
+const COMP_COLORES={
+  "LIMPIA":{fuerte:"#047857",suave:"#ecfdf5",borde:"#a7f3d0",titulo:"LIMPIA",frase:"Sin hallazgos de riesgo en las fuentes consultadas"},
+  "RIESGO MEDIO":{fuerte:"#c2410c",suave:"#fff7ed",borde:"#fed7aa",titulo:"RIESGO MEDIO",frase:"Se encontraron puntos que requieren revisión"},
+  "MALA":{fuerte:"#b91c1c",suave:"#fef2f2",borde:"#fecaca",titulo:"MALA",frase:"Se encontraron hallazgos de riesgo"}
+};
+COMP_COLORES["PRECAUCION"]=COMP_COLORES["RIESGO MEDIO"];COMP_COLORES["NO ENVIAR"]=COMP_COLORES["MALA"];
+async function folioDe(r){
+  try{const b=new TextEncoder().encode(r.direccion+"|"+r.fecha);const h=new Uint8Array(await crypto.subtle.digest("SHA-256",b));
+    return "VW-"+[...h.slice(0,4)].map(x=>x.toString(16).padStart(2,"0")).join("").toUpperCase();}
+  catch(_){return "VW-"+r.fecha.replace(/\D/g,"").slice(2,12);}
+}
+function envolver(cx,texto,ancho){
+  const palabras=String(texto).split(/\s+/);const lineas=[];let l="";
+  for(const p of palabras){const prueba=l?l+" "+p:p;if(cx.measureText(prueba).width>ancho&&l){lineas.push(l);l=p;}else l=prueba;}
+  if(l)lineas.push(l);return lineas;
+}
+function iconoEstado(cx,tipo,x,y,r,color){
+  cx.save();cx.fillStyle=color;cx.beginPath();cx.arc(x,y,r,0,Math.PI*2);cx.fill();
+  cx.strokeStyle="#fff";cx.lineWidth=r*0.17;cx.lineCap="round";cx.lineJoin="round";cx.beginPath();
+  if(tipo==="LIMPIA"){cx.moveTo(x-r*.42,y+r*.02);cx.lineTo(x-r*.1,y+r*.34);cx.lineTo(x+r*.45,y-r*.3);}
+  else if(tipo==="MALA"){cx.moveTo(x-r*.33,y-r*.33);cx.lineTo(x+r*.33,y+r*.33);cx.moveTo(x+r*.33,y-r*.33);cx.lineTo(x-r*.33,y+r*.33);}
+  else{cx.moveTo(x,y-r*.42);cx.lineTo(x,y+r*.08);cx.stroke();cx.beginPath();cx.fillStyle="#fff";cx.arc(x,y+r*.38,r*.1,0,Math.PI*2);cx.fill();cx.restore();return;}
+  cx.stroke();cx.restore();
+}
+function rectRedondo(cx,x,y,w,h,r){cx.beginPath();cx.moveTo(x+r,y);cx.arcTo(x+w,y,x+w,y+h,r);cx.arcTo(x+w,y+h,x,y+h,r);cx.arcTo(x,y+h,x,y,r);cx.arcTo(x,y,x+w,y,r);cx.closePath();}
+async function dibujarComprobante(r,firma){
+  const tipo=COMP_COLORES[r.resultado]?(r.resultado==="PRECAUCION"?"RIESGO MEDIO":r.resultado==="NO ENVIAR"?"MALA":r.resultado):"RIESGO MEDIO";
+  const C=COMP_COLORES[tipo];
+  const W=1080,PAD=60,CW=W-2*PAD,M=PAD+64,AN=W-2*M;
+  const SANS='"Roboto","SF Pro Display",-apple-system,"Helvetica Neue",Arial,sans-serif',MONO='"Roboto Mono","SF Mono",Menlo,Consolas,monospace';
+  const folio=await folioDe(r);
+  const f=new Date(r.fecha);
+  const fechaTxt=f.toLocaleDateString("es-MX",{day:"numeric",month:"long",year:"numeric"});
+  const horaTxt=f.toLocaleTimeString("es-MX",{hour:"numeric",minute:"2-digit"});
+  const hex2rgba=(h,a)=>{const n=parseInt(h.slice(1),16);return `rgba(${n>>16&255},${n>>8&255},${n&255},${a})`;};
+  /* capa de contenido */
+  const cv=document.createElement("canvas");cv.width=W;cv.height=2200;const cx=cv.getContext("2d");
+  cx.textBaseline="alphabetic";
+  let y=PAD+96;
+  /* encabezado */
+  cx.fillStyle="#0f172a";cx.font=`600 30px ${SANS}`;cx.textAlign="left";cx.fillText("Verificación de wallet",M,y);
+  cx.fillStyle="#0f172a";cx.font=`500 26px ${SANS}`;cx.textAlign="right";cx.fillText(fechaTxt,W-M,y-2);
+  y+=36;cx.fillText(horaTxt,W-M,y);cx.textAlign="left";
+  /* icono con halo */
+  y+=150;
+  cx.fillStyle=hex2rgba(C.fuerte,.08);cx.beginPath();cx.arc(W/2,y,104,0,Math.PI*2);cx.fill();
+  cx.fillStyle=hex2rgba(C.fuerte,.14);cx.beginPath();cx.arc(W/2,y,82,0,Math.PI*2);cx.fill();
+  iconoEstado(cx,tipo,W/2,y,60,C.fuerte);
+  /* resultado */
+  y+=200;cx.textAlign="center";cx.fillStyle=C.fuerte;cx.font=`800 92px ${SANS}`;
+  if("letterSpacing" in cx)cx.letterSpacing="2px";cx.fillText(C.titulo,W/2,y);if("letterSpacing" in cx)cx.letterSpacing="0px";
+  y+=58;cx.fillStyle="#64748b";cx.font=`400 32px ${SANS}`;cx.fillText(C.frase,W/2,y);
+  /* desde cuando */
+  const desdeTxt=textoDesde(r);
+  if(desdeTxt&&tipo!=="LIMPIA"){
+    y+=36;cx.font=`600 28px ${SANS}`;const anP=cx.measureText(desdeTxt).width+68,alP=58;
+    cx.fillStyle=hex2rgba(C.fuerte,.09);rectRedondo(cx,W/2-anP/2,y,anP,alP,29);cx.fill();
+    cx.fillStyle=C.fuerte;cx.textAlign="center";cx.fillText(desdeTxt,W/2,y+39);y+=alP-24;
+  }
+  /* direccion en pastilla */
+  y+=72;const altoDir=172;
+  cx.fillStyle="#f8fafc";rectRedondo(cx,M,y,AN,altoDir,28);cx.fill();
+  cx.strokeStyle="#e2e8f0";cx.lineWidth=2;rectRedondo(cx,M,y,AN,altoDir,28);cx.stroke();
+  const d=r.direccion,lineas=[d.slice(0,17),d.slice(17)];
+  let yy=y+72;
+  lineas.forEach((t,k)=>{
+    cx.font=`500 44px ${MONO}`;const ancho=cx.measureText(t).width;let x=W/2-ancho/2;cx.textAlign="left";
+    const partes=k===0?[[t.slice(0,6),1],[t.slice(6),0]]:[[t.slice(0,-6),0],[t.slice(-6),1]];
+    for(const [txt,neg] of partes){cx.font=`${neg?700:400} 44px ${MONO}`;cx.fillStyle=neg?"#0f172a":"#94a3b8";cx.fillText(txt,x,yy);x+=cx.measureText(txt).width;}
+    yy+=58;
+  });
+  y+=altoDir+52;
+  cx.textAlign="center";cx.fillStyle="#94a3b8";cx.font=`500 26px ${SANS}`;
+  cx.fillText(["USDT","Red TRON"].concat(r.cliente?[r.cliente]:[]).join("   ·   "),W/2,y);
+  /* motivo */
+  const motivos=(r.motivos||[]).slice(0,2);
+  if(motivos.length){
+    y+=48;cx.font=`500 29px ${SANS}`;
+    const ls=motivos.flatMap(m=>envolver(cx,m,AN-80));
+    const alto=ls.length*40+48;
+    cx.fillStyle=hex2rgba(C.fuerte,.07);rectRedondo(cx,M,y,AN,alto,22);cx.fill();
+    cx.fillStyle=C.fuerte;cx.textAlign="center";let ly=y+50;for(const l of ls){cx.fillText(l,W/2,ly);ly+=40;}
+    y+=alto;
+  }
+  /* pie */
+  y+=70;
+  cx.setLineDash([6,8]);cx.strokeStyle="#e2e8f0";cx.lineWidth=2;cx.beginPath();cx.moveTo(M,y);cx.lineTo(W-M,y);cx.stroke();cx.setLineDash([]);
+  y+=62;
+  /* sello pequeño */
+  cx.fillStyle=C.fuerte;cx.beginPath();cx.arc(M+16,y-9,16,0,Math.PI*2);cx.fill();
+  cx.strokeStyle="#fff";cx.lineWidth=3.5;cx.lineCap="round";cx.lineJoin="round";cx.beginPath();cx.moveTo(M+9,y-9);cx.lineTo(M+14,y-3);cx.lineTo(M+23,y-15);cx.stroke();
+  cx.textAlign="left";cx.fillStyle="#334155";cx.font=`500 27px ${SANS}`;cx.fillText("Verificado por "+(firma||"Carlos Leal Rodríguez"),M+46,y);
+  cx.textAlign="right";cx.fillStyle="#94a3b8";cx.font=`500 24px ${MONO}`;cx.fillText(folio,W-M,y);
+  y+=46;cx.textAlign="left";cx.fillStyle="#a0aec0";cx.font=`400 21px ${SANS}`;
+  for(const l of envolver(cx,"Basado en fuentes públicas (OFAC, Tether, GoPlus) a la fecha indicada. No es una certificación ni una opinión legal.",AN)){cx.fillText(l,M,y);y+=29;}
+  const cardBottom=y+48;const H=cardBottom+PAD;
+  /* composición final */
+  const fin=document.createElement("canvas");fin.width=W;fin.height=H;const fx=fin.getContext("2d");
+  const g=fx.createLinearGradient(0,0,0,H);g.addColorStop(0,C.suave);g.addColorStop(1,"#f1f5f9");
+  fx.fillStyle=g;fx.fillRect(0,0,W,H);
+  fx.save();fx.shadowColor="rgba(15,23,42,.10)";fx.shadowBlur=48;fx.shadowOffsetY=16;
+  fx.fillStyle="#ffffff";rectRedondo(fx,PAD,PAD,CW,cardBottom-PAD,44);fx.fill();fx.restore();
+  fx.save();rectRedondo(fx,PAD,PAD,CW,cardBottom-PAD,44);fx.clip();fx.fillStyle=C.fuerte;fx.fillRect(PAD,PAD,CW,10);fx.restore();
+  fx.drawImage(cv,0,0,W,H,0,0,W,H);
+  return {canvas:fin,folio};
+}
+async function compartirComprobante(r,firma){
+  const {canvas,folio}=await dibujarComprobante(r,firma);
+  const blob=await new Promise(ok=>canvas.toBlob(ok,"image/png"));
+  const nombre=`comprobante_${folio}.png`;
+  const archivo=new File([blob],nombre,{type:"image/png"});
+  if(navigator.canShare&&navigator.canShare({files:[archivo]})){
+    try{await navigator.share({files:[archivo],title:"Comprobante de verificación"});return;}catch(e){if(e.name==="AbortError")return;}
+  }
+  mostrarComprobante(blob,nombre);
+}
+function mostrarComprobante(blob,nombre){
+  const url=URL.createObjectURL(blob);
+  const capa=document.createElement("div");
+  capa.style.cssText="position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.72);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px";
+  const img=document.createElement("img");img.src=url;img.alt="Comprobante";img.style.cssText="max-width:min(92vw,520px);max-height:72vh;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.4)";
+  const fila=document.createElement("div");fila.style.cssText="display:flex;gap:10px;flex-wrap:wrap;justify-content:center";
+  const boton=(t,fn,pri)=>{const b=document.createElement("button");b.textContent=t;b.onclick=fn;
+    b.style.cssText=`border:0;border-radius:10px;padding:12px 18px;font:600 15px/1 inherit;cursor:pointer;${pri?"background:#fff;color:#111":"background:rgba(255,255,255,.15);color:#fff"}`;return b;};
+  const a=document.createElement("a");a.href=url;a.download=nombre;
+  fila.append(boton("Descargar imagen",()=>a.click(),true));
+  if(navigator.clipboard&&window.ClipboardItem)fila.append(boton("Copiar imagen",async e=>{try{await navigator.clipboard.write([new ClipboardItem({"image/png":blob})]);e.target.textContent="Copiada ✓";}catch(_){e.target.textContent="No se pudo copiar";}}));
+  fila.append(boton("Cerrar",()=>{capa.remove();URL.revokeObjectURL(url);}));
+  const nota=document.createElement("div");nota.style.cssText="color:#e5e7eb;font-size:13px;text-align:center;max-width:420px";
+  nota.textContent="Descárgala o cópiala y pégala en WhatsApp. En el celular también puedes mantener presionada la imagen para guardarla.";
+  capa.append(img,fila,nota);capa.onclick=e=>{if(e.target===capa){capa.remove();URL.revokeObjectURL(url);}};
+  document.body.append(capa);
+}
+
+const firma=()=>LS.get("firma","")||"Carlos Leal Rodríguez";
 
 /* ================= QR ================= */
 const RE_BUSCA=/T[1-9A-HJ-NP-Za-km-z]{33}/g;
@@ -438,6 +609,8 @@ $("qrArchivo").onchange=async()=>{
 
 /* ajustes */
 $("clave").value=clave();
+$("firma").value=LS.get("firma","");
+$("guardarFirma").onclick=()=>{const f=$("firma").value.trim().slice(0,60);LS.set("firma",f);$("firmaMsg").textContent=f?"Guardado.":"Se usará Carlos Leal Rodríguez.";$("firmaMsg").className="msg okm";};
 $("guardarClave").onclick=()=>{const k=$("clave").value.trim();
   if(!/^[0-9a-f-]{30,}$/i.test(k)){$("claveMsg").textContent="Esa clave no parece válida. Cópiala completa desde trongrid.io.";$("claveMsg").className="msg err";return;}
   LS.set("clave",k);$("claveMsg").textContent="Clave guardada en este celular.";$("claveMsg").className="msg okm";refrescarAviso();};
