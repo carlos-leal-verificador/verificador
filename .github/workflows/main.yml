@@ -144,7 +144,9 @@ jobs:
               nuevo = not estado
               if os.environ.get("PRUEBA") == "true":
                   avisar("✅ Vigía conectado", f"Estoy vigilando tus {len(WALLETS)} wallets. Te avisaré aquí si pasa algo.", 3, "white_check_mark")
-              desde = max(estado.get("ultimo_ms", ahora_ms - 20 * 60 * 1000), ahora_ms - 24 * 3600 * 1000) - 60 * 1000
+              # revisa con 3 horas de traslape (GitHub a veces se atrasa y TronGrid tarda en mostrar movimientos);
+              # "vistos" evita avisos repetidos
+              desde = max(estado.get("ultimo_ms", ahora_ms - 20 * 60 * 1000) - 3 * 3600 * 1000, ahora_ms - 24 * 3600 * 1000)
               vistos = set(estado.get("vistos", []))
               congeladas = set(estado.get("congeladas", []))
               destinos = set(estado.get("destinos", []))   # solo los ultimos 5 caracteres de a quien le has enviado
