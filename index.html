@@ -152,6 +152,13 @@ h2{font-size:18px;margin:6px 0 4px}
 <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" id="guardarClave">Guardar clave</button><button class="btn" id="borrarClave">Borrar clave</button></div>
 </div>
 <div class="bloque">
+<h2>Clave de MistTrack</h2>
+<p class="sub" style="margin:0">Revisión profesional: puntaje de riesgo, etiquetas y rastreo a varios pasos. Cada revisión usa 1 consulta de tu paquete. Se guarda solo en este celular. La sacas de dashboard.misttrack.io → API Keys.</p>
+<input class="campo" id="mtClave" type="password" placeholder="Pega tu clave de MistTrack" autocomplete="off" spellcheck="false">
+<div class="msg" id="mtMsg"></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" id="mtGuardar">Guardar clave</button><button class="btn" id="mtBorrar">Borrar clave</button></div>
+</div>
+<div class="bloque">
 <h2>Nombre en el comprobante</h2>
 <p class="sub" style="margin:0">Aparece al pie de la imagen como "Verificado por …".</p>
 <input class="campo" id="firma" type="text" placeholder="Carlos Leal Rodríguez" autocomplete="off">
@@ -165,7 +172,7 @@ h2{font-size:18px;margin:6px 0 4px}
 </div>
 <div class="bloque">
 <h2>Qué revisa</h2>
-<p class="sub" style="margin:0">La dirección contra la lista de sanciones de la OFAC, la lista negra de Tether y GoPlus Security, y sus 15 contrapartes principales contra OFAC y Tether. 🔴 MALA si la dirección o una contraparte está sancionada o congelada, o tiene una marca grave. 🟠 RIESGO MEDIO si hay una marca menor o alguna fuente no respondió.</p>
+<p class="sub" style="margin:0">La dirección contra la lista de sanciones de la OFAC, la lista negra de Tether y GoPlus Security, y sus 15 contrapartes principales contra OFAC y Tether. Con clave de MistTrack, también su puntaje profesional de riesgo (0 a 100), que rastrea el dinero a varios pasos. 🔴 MALA si la dirección o una contraparte está sancionada o congelada, tiene una marca grave, o MistTrack da 71 o más. 🟠 RIESGO MEDIO si hay una marca menor, MistTrack da de 31 a 70, o alguna fuente no respondió.</p>
 </div>
 </section>
 </main>
@@ -207,7 +214,7 @@ async function tronHex20(addr){
 const USDT="TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
 const OFAC_BASE="https://raw.githubusercontent.com/0xB10C/ofac-sanctioned-digital-currency-addresses/lists/sanctioned_addresses_";
 const GOPLUS_SEVERAS=new Set(["sanctioned","money_laundering","stealing_attack","darkweb_transactions","cybercrime","financial_crime","blackmail_activities"]);
-const MAX_CP=15,TX_LEER=400;
+const MAX_CP=15,TX_LEER=400,P2_ORIGENES=5,P2_POR_ORIGEN=8;
 const clave=()=>LS.get("clave","");
 let ultimaLlamada=0;
 async function ritmo(){const espera=(clave()?260:1150)-(Date.now()-ultimaLlamada);if(espera>0)await sleep(espera);ultimaLlamada=Date.now();}
@@ -254,6 +261,60 @@ async function fechaCongelada(d){ /* Tronscan: cuándo la congeló Tether (si fa
   }catch(_){return null;}finally{clearTimeout(to);}
 }
 const fechaCorta=ms=>new Date(ms).toLocaleDateString("es-MX",{day:"numeric",month:"short",year:"numeric"});
+/* ---------- MistTrack (revisión profesional) ---------- */
+const mtClave=()=>LS.get("mt","");
+const MT_TIPOS={sanctioned_entity:"entidad sancionada",illicit_activity:"actividad ilícita",mixer:"mezclador",gambling:"apuestas",risk_exchange:"exchange de alto riesgo",bridge:"puente entre redes"};
+const MT_NIVEL={low:"Bajo",moderate:"Moderado",high:"Alto",severe:"Grave"};
+const MT_DET={"involved illicit activity":"involucrada en actividad ilícita","interact with high-risk tag address":"interactuó con direcciones de alto riesgo","sanctioned entity":"entidad sancionada","phishing":"phishing (estafa)","involved theft activity":"involucrada en robos","involved ransomware activity":"involucrada en ransomware","involved money laundering":"involucrada en lavado de dinero","mixer":"usó un mezclador"};
+function mtError(m){m=String(m||"");
+  if(/key|auth|permission|balance|quota|credit|expire/i.test(m))return new Error("MistTrack: la clave no es válida o se acabaron tus consultas");
+  if(/RateLimit/i.test(m))return new Error("MistTrack: límite de consultas, intenta en un momento");
+  return new Error("MistTrack: "+(m||"error"));}
+async function mtPedir(url,opt){
+  const ctl=new AbortController();const to=setTimeout(()=>ctl.abort(),30000);
+  try{let r;try{r=await fetch(url,Object.assign({signal:ctl.signal,cache:"no-store"},opt||{}));}
+    catch(e){throw mtError(e.name==="AbortError"?"tardó demasiado":"no se pudo conectar desde este navegador");}
+    if(r.status===429)throw mtError("RateLimit");
+    let j;try{j=await r.json();}catch(_){throw mtError("respuesta "+r.status);}
+    if(j.success===false)throw mtError(j.msg);
+    return j;}
+  finally{clearTimeout(to);}
+}
+async function mistTrack(d,prog){
+  const k=mtClave(),B="https://openapi.misttrack.io/v3/";
+  /* 1) consulta directa */
+  try{const j=await mtPedir(`${B}risk_score?coin=USDT-TRC20&address=${d}&api_key=${encodeURIComponent(k)}`);
+    if(j.data&&j.data.score!=null)return j.data;}
+  catch(e){if(/clave|límite/.test(e.message))throw e;}
+  /* 2) consulta por tarea (por si la directa aún no tiene resultado) */
+  const c=await mtPedir(B+"risk_score_create_task",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({coin:"USDT-TRC20",address:d,api_key:k})});
+  const cd=c.data||c;if(!cd.task_id)throw mtError("respuesta inesperada");
+  let espera=cd.has_result?0:2500;const t0=Date.now();
+  while(Date.now()-t0<60000){
+    if(espera)await sleep(espera);espera=2500;prog&&prog("Consultando MistTrack…");
+    const q=await mtPedir(`${B}risk_score_query_task?task_id=${encodeURIComponent(cd.task_id)}&api_key=${encodeURIComponent(k)}`);
+    if(q.data&&q.data.score!=null)return q.data;
+    if(q.msg==="TaskNotFound")throw mtError("no encontró la consulta");
+  }
+  throw mtError("tardó demasiado");
+}
+function mtLineas(mt){
+  const s=Math.round(+mt.score),nivel=MT_NIVEL[String(mt.risk_level||"").toLowerCase()]||mt.risk_level||"";
+  const marcas=(mt.detail_list||[]).map(x=>MT_DET[String(x).toLowerCase()]||x);
+  const det=(mt.risk_detail||[]).slice().sort((a,b)=>(+b.percent||0)-(+a.percent||0));
+  const usd=v=>(+v||0).toLocaleString("es-MX",{maximumFractionDigits:0});
+  const pct=v=>(+v||0).toLocaleString("es-MX",{maximumFractionDigits:1})+"%";
+  const lineas=[`MistTrack: riesgo ${s}/100 (${nivel})`+(marcas.length?" · "+marcas.join(", "):"")+"."];
+  for(const x of det.slice(0,3)){
+    const tipo=MT_TIPOS[x.risk_type]||String(x.risk_type||"riesgo").replace(/_/g," ");
+    const entT=x.entity?(MT_TIPOS[String(x.entity).toLowerCase().replace(/[\s-]+/g,"_")]||String(x.entity)):"";
+    const ent=entT&&entT.toLowerCase()!==tipo?` (${entT})`:"";
+    const dist=x.exposure_type==="direct"?"directo":`a ${x.hop_num||"varios"} pasos`;
+    lineas.push(`${pct(x.percent)} de su dinero (${usd(x.volume)} USD) viene de ${tipo}${ent}, ${dist}.`);
+  }
+  if(mt.hacking_event)lineas.push(`Relacionada con el incidente: ${mt.hacking_event}.`);
+  return {s,nivel,lineas,directa:det.some(x=>x.exposure_type==="direct"&&["sanctioned_entity","illicit_activity"].includes(x.risk_type))};
+}
 async function goplus(d){
   const r=await fetch(`https://api.gopluslabs.io/api/v1/address_security/${d}?chain_id=tron`);
   if(!r.ok)throw new Error("GoPlus respondió "+r.status);
@@ -261,9 +322,9 @@ async function goplus(d){
   const res=j.result||{};
   return Object.keys(res).filter(k=>!["data_source","contract_address"].includes(k)&&!["0","","None","null"].includes(String(res[k]))).sort();
 }
-async function historial(d){
+async function historial(d,max=TX_LEER){
   const txs=[];let fp=null;
-  while(txs.length<TX_LEER){
+  while(txs.length<max){
     let u=`https://api.trongrid.io/v1/accounts/${d}/transactions/trc20?contract_address=${USDT}&limit=200&only_confirmed=true`;
     if(fp)u+="&fingerprint="+encodeURIComponent(fp);
     const j=await tron(u);
@@ -271,7 +332,32 @@ async function historial(d){
       const dec=+((t.token_info||{}).decimals??6);txs.push({de:t.from,para:t.to,monto:Number(t.value)/10**dec,ms:t.block_timestamp});}
     fp=(j.meta||{}).fingerprint;if(!fp||!(j.data||[]).length)break;
   }
-  return txs.slice(0,TX_LEER);
+  return txs.slice(0,max);
+}
+
+/* ================= señales de comportamiento ================= */
+const PASO_MIN=1000,PASO_PCT=0.9,PASO_HORAS=24,NUEVA_DIAS=7,NUEVA_MIN=5000;
+function senales(d,txs,completo){
+  const out=[];if(!txs.length)return out;
+  const fmt=v=>v.toLocaleString("es-MX",{maximumFractionDigits:0});
+  /* 1) dinero de paso: entra mucho y sale casi todo en menos de 24 h */
+  const ent=txs.filter(t=>t.para===d&&t.de!==d&&t.monto>=PASO_MIN&&t.ms);
+  let mejor=null;
+  for(const e of ent){
+    const sal=txs.filter(t=>t.de===d&&t.para!==d&&t.ms>=e.ms&&t.ms<=e.ms+PASO_HORAS*3600e3).reduce((a,t)=>a+t.monto,0);
+    if(sal>=e.monto*PASO_PCT&&(!mejor||e.monto>mejor.monto)){
+      const ult=Math.max(...txs.filter(t=>t.de===d&&t.ms>=e.ms&&t.ms<=e.ms+PASO_HORAS*3600e3).map(t=>t.ms));
+      mejor={monto:e.monto,ms:e.ms,pct:Math.min(100,Math.round(sal/e.monto*100)),horas:Math.max(1,Math.round((ult-e.ms)/3600e3))};}
+  }
+  if(mejor)out.push({ms:mejor.ms,motivo:"dinero de paso",texto:`Dinero de paso: recibió ${fmt(mejor.monto)} USDT el ${fechaCorta(mejor.ms)} y sacó el ${mejor.pct}% en ${mejor.horas} h. Patrón común para esconder el origen del dinero.`});
+  /* 2) wallet nueva con montos grandes */
+  if(completo){
+    const prim=Math.min(...txs.map(t=>t.ms).filter(Boolean));
+    const dias=(Date.now()-prim)/864e5;
+    const vol=txs.reduce((a,t)=>a+t.monto,0);
+    if(dias<NUEVA_DIAS&&vol>=NUEVA_MIN)out.push({ms:prim,motivo:"wallet nueva con montos grandes",texto:`Wallet nueva (${Math.max(1,Math.round(dias))} día${Math.round(dias)>1?"s":""}) que ya movió ${fmt(vol)} USDT.`});
+  }
+  return out;
 }
 
 /* ================= revisión ================= */
@@ -292,11 +378,20 @@ async function revisar(d,cliente,prog){
   try{const b=await goplus(d);fuentes.push({f:"GoPlus",e:"ok",h:b.length>0});
       if(b.length)(b.some(x=>GOPLUS_SEVERAS.has(x))?rojos:amarillos).push("GoPlus la marca: "+b.join(", ").replace(/_/g," ")+".");}
   catch(e){fuentes.push({f:"GoPlus",e:"error"});errores.push("GoPlus");}
+  let mt=null;
+  if(mtClave()){prog("Consultando MistTrack…");
+    try{const raw=await mistTrack(d,prog);const L=mtLineas(raw);
+      mt={score:L.s,nivel:L.nivel,reporte:raw.risk_report_url||"",etiqueta:raw.address_label||""};
+      fuentes.push({f:"MistTrack",e:"ok",h:L.s>=31,t:`${L.s}/100 · ${L.nivel}`,c:L.s>=71?"mal":L.s>=31?"med":"ok"});
+      if(L.s>=71||L.directa)rojos.push(...L.lineas);else if(L.s>=31)amarillos.push(...L.lineas);
+      if(raw.address_label)info.push("Etiqueta de MistTrack: "+raw.address_label);}
+    catch(e){fuentes.push({f:"MistTrack",e:"error"});errores.push("MistTrack");info.push(e.message||"MistTrack no respondió");}}
   let saldo=null;try{saldo=await saldoUSDT(d);}catch(_){}
   const cp={total:0,revisadas:0};
   prog("Revisando sus contrapartes…");
   try{
     const txs=await historial(d);
+    if(!LS.get("mias",[]).includes(d))for(const x of senales(d,txs,txs.length<TX_LEER)){amarillos.push(x.texto);fechas.push([x.ms,x.motivo]);}
     if(!txs.length)info.push("Wallet nueva: todavía no ha recibido ni enviado USDT.");
     else if(txs.length>=TX_LEER)info.push(`Se revisaron sus ${TX_LEER} movimientos más recientes.`);
     const g={};
@@ -308,15 +403,37 @@ async function revisar(d,cliente,prog){
     const top=Object.entries(g).filter(([,c])=>!(c.nEnv===0&&c.nRec>0&&c.nDust===c.nRec))
       .sort((a,b)=>(b[1].rec+b[1].env)-(a[1].rec+a[1].env)).slice(0,MAX_CP);
     let n=0;
+    const sucias=new Set();
     for(const [a,c] of top){
       prog(`Revisando contrapartes… ${++n} de ${top.length}`);
       const p=[];if(ofac&&ofac.has(a))p.push("sancionada por OFAC");
       try{if(await congeladaTether(a)){const fc=await fechaCongelada(a);p.push("congelada por Tether"+(fc?` desde el ${fechaCorta(fc)}`:""));}}catch(_){errores.push("Tether (contrapartes)");}
       cp.revisadas++;
+      if(p.length)sucias.add(a);
       if(p.length){const rel=[];if(c.rec)rel.push(`le envió ${c.rec.toLocaleString("es-MX",{maximumFractionDigits:2})} USDT`);
         if(c.env)rel.push(`recibió ${c.env.toLocaleString("es-MX",{maximumFractionDigits:2})} USDT de ella`);
         rojos.push(`Contraparte ${corta(a)} (${rel.join(" y ")}) está ${p.join(" y ")}.`+(c.primera?` Primer movimiento con ella: ${fechaCorta(c.primera)}.`:""));
         if(c.primera)fechas.push([c.primera,"primer movimiento con una contraparte contaminada"]);}
+    }
+    /* ---- 2 pasos: ¿de dónde sacaron el dinero quienes le enviaron? ---- */
+    if(txs.length&&!LS.get("mias",[]).includes(d)){
+      const origenes=Object.entries(g).filter(([a,c])=>c.rec>=1&&!sucias.has(a)).sort((x,y)=>y[1].rec-x[1].rec).slice(0,P2_ORIGENES);
+      const vistas=new Set([d,...Object.keys(g)]);let k=0;
+      for(const [o,co] of origenes){
+        prog(`Revisando a 2 pasos… ${++k} de ${origenes.length}`);
+        let t2;try{t2=await historial(o,200);}catch(_){errores.push("2 pasos");continue;}
+        const g2={};for(const t of t2){if(t.para!==o||t.de===o)continue;(g2[t.de]=g2[t.de]||{rec:0,primera:t.ms}).rec+=t.monto;if(t.ms<g2[t.de].primera)g2[t.de].primera=t.ms;}
+        const cand=Object.entries(g2).filter(([a])=>!vistas.has(a)).sort((x,y)=>y[1].rec-x[1].rec).slice(0,P2_POR_ORIGEN);
+        for(const [a,c2] of cand){
+          vistas.add(a);const p=[];
+          if(ofac&&ofac.has(a))p.push("sancionada por OFAC");
+          try{if(await congeladaTether(a))p.push("congelada por Tether");}catch(_){errores.push("Tether (2 pasos)");continue;}
+          if(p.length){
+            rojos.push(`A 2 pasos: le llegó dinero de ${corta(o)} (${co.rec.toLocaleString("es-MX",{maximumFractionDigits:0})} USDT), que a su vez recibió ${c2.rec.toLocaleString("es-MX",{maximumFractionDigits:0})} USDT de ${corta(a)}, ${p.join(" y ")}.`);
+            if(co.primera)fechas.push([co.primera,"dinero recibido de una wallet contaminada a 2 pasos"]);}
+        }
+      }
+      cp.pasos2=k;
     }
   }catch(e){errores.push("historial");}
   for(const h of parecidas(d).slice(0,3))
@@ -331,7 +448,7 @@ async function revisar(d,cliente,prog){
   if(resultado!==VERDE&&!desde&&!soloFallas){ /* sin fecha en las fuentes: primera vez que TÚ la detectaste */
     const previas=LS.get("hist",[]).filter(h=>h.direccion===d&&h.resultado!=="LIMPIA").map(h=>Date.parse(h.fecha)).filter(x=>x>0);
     desde={fecha:new Date(Math.min(Date.now(),...previas)).toISOString(),motivo:"primera detección en tus revisiones",tipo:"deteccion"};}
-  return {desde,fecha:new Date().toISOString(),direccion:d,cliente:cliente||"",resultado,motivos:[...rojos,...amarillos],info,fuentes,
+  return {mt,desde,fecha:new Date().toISOString(),direccion:d,cliente:cliente||"",resultado,motivos:[...rojos,...amarillos],info,fuentes,
           saldo,cp,segundos:Math.round((performance.now()-t0)/100)/10};
 }
 
@@ -381,11 +498,12 @@ function pintar(box,r,acciones){
     kids.push(a);}else kids.push(el("div",{className:"acc"},el("button",{className:"btn",textContent:"Comprobante",onclick:async ev=>{const b=ev.currentTarget;b.disabled=true;try{await compartirComprobante(r,firma());}catch(_){toast("No se pudo crear el comprobante");}finally{b.disabled=false;}}})));
   const filas=[["Revisado",new Date(r.fecha).toLocaleString("es-MX",{dateStyle:"medium",timeStyle:"short"})+` · ${r.segundos} s`]];
   if(r.saldo!=null)filas.push(["Saldo",r.saldo.toLocaleString("es-MX",{maximumFractionDigits:2})+" USDT"]);
-  if(r.cp.revisadas)filas.push(["Contrapartes revisadas",`${r.cp.revisadas} de ${r.cp.total}`]);
+  if(r.cp.revisadas)filas.push(["Contrapartes revisadas",`${r.cp.revisadas} de ${r.cp.total}`+(r.cp.pasos2?` · ${r.cp.pasos2} orígenes a 2 pasos`:"")]);
   r.info.forEach(x=>filas.push(["Nota",x]));
-  r.fuentes.forEach(f=>filas.push([f.f,f.e==="error"?{t:"Sin respuesta",c:"med"}:f.h?{t:"Hallazgo",c:"mal"}:{t:"Sin hallazgos",c:"ok"}]));
+  r.fuentes.forEach(f=>filas.push([f.f,f.e==="error"?{t:"Sin respuesta",c:"med"}:f.t?{t:f.t,c:f.c||"ok"}:f.h?{t:"Hallazgo",c:"mal"}:{t:"Sin hallazgos",c:"ok"}]));
   const cont=el("div",{className:"cont"});
   filas.forEach(([a,b])=>cont.append(el("div",{className:"fila"},[el("span",{textContent:a}),typeof b==="string"?el("span",{textContent:b}):el("span",{textContent:b.t,className:b.c})])));
+  if(r.mt&&r.mt.reporte&&/^https:\/\//.test(r.mt.reporte))cont.append(el("div",{className:"fila"},[el("span",{textContent:"Reporte profesional"}),el("a",{textContent:"Abrir PDF de MistTrack",href:r.mt.reporte,target:"_blank",rel:"noopener",className:"enlace"})]));
   kids.push(el("details",{className:"det"},[el("summary",{textContent:"Ver detalles"}),cont]));
   box.replaceChildren(...kids);box.hidden=false;
 }
@@ -505,7 +623,7 @@ async function dibujarComprobante(r,firma){
   cx.textAlign="left";cx.fillStyle="#334155";cx.font=`500 27px ${SANS}`;cx.fillText("Verificado por "+(firma||"Carlos Leal Rodríguez"),M+46,y);
   cx.textAlign="right";cx.fillStyle="#94a3b8";cx.font=`500 24px ${MONO}`;cx.fillText(folio,W-M,y);
   y+=46;cx.textAlign="left";cx.fillStyle="#a0aec0";cx.font=`400 21px ${SANS}`;
-  for(const l of envolver(cx,"Basado en fuentes públicas (OFAC, Tether, GoPlus) a la fecha indicada. No es una certificación ni una opinión legal.",AN)){cx.fillText(l,M,y);y+=29;}
+  for(const l of envolver(cx,(r.mt?"Basado en OFAC, Tether, GoPlus y MistTrack":"Basado en fuentes públicas (OFAC, Tether, GoPlus)")+" a la fecha indicada. No es una certificación ni una opinión legal.",AN)){cx.fillText(l,M,y);y+=29;}
   const cardBottom=y+48;const H=cardBottom+PAD;
   /* composición final */
   const fin=document.createElement("canvas");fin.width=W;fin.height=H;const fx=fin.getContext("2d");
@@ -638,6 +756,11 @@ $("qrArchivo").onchange=async()=>{
 
 /* ajustes */
 $("clave").value=clave();
+$("mtClave").value=mtClave();
+$("mtGuardar").onclick=()=>{const k=$("mtClave").value.trim();
+  if(k.length<16||/\s/.test(k)){$("mtMsg").textContent="Esa clave no parece válida. Cópiala completa desde dashboard.misttrack.io → API Keys.";$("mtMsg").className="msg err";return;}
+  LS.set("mt",k);$("mtMsg").textContent="Clave guardada. Desde ahora cada revisión incluye MistTrack.";$("mtMsg").className="msg okm";};
+$("mtBorrar").onclick=()=>{LS.del("mt");$("mtClave").value="";$("mtMsg").textContent="Clave borrada. Las revisiones ya no usarán MistTrack.";$("mtMsg").className="msg";};
 $("firma").value=LS.get("firma","");
 $("guardarFirma").onclick=()=>{const f=$("firma").value.trim().slice(0,60);LS.set("firma",f);$("firmaMsg").textContent=f?"Guardado.":"Se usará Carlos Leal Rodríguez.";$("firmaMsg").className="msg okm";};
 $("guardarClave").onclick=()=>{const k=$("clave").value.trim();
