@@ -495,7 +495,7 @@ function pintar(box,r,acciones){
   const kids=[el("div",{className:"v",style:`background:var(--${e.c}bg)`},[el("div",{className:"i",textContent:e.i}),
     el("div",{className:"w",textContent:r.resultado,style:`color:var(--${e.c})`}),el("div",{className:"s",textContent:e.s+(r.cliente?" · "+r.cliente:"")})].concat(textoDesde(r)?[el("div",{textContent:textoDesde(r),style:`color:var(--${e.c});font-size:13px;font-weight:600;margin-top:6px`})]:[]))];
   const dd=el("div",{className:"dir"});dd.append(el("b",{textContent:r.direccion.slice(0,6)}),r.direccion.slice(6,-6),el("b",{textContent:r.direccion.slice(-6)}));kids.push(dd);
-  if(r.motivos.length){const m=el("div",{className:"motivos",style:`background:var(--${e.c}bg);color:var(--${e.c})`});r.motivos.forEach(x=>m.append(el("div",{textContent:x})));kids.push(m);}
+  const pq=porQue(r);if(pq.length){const m=el("div",{className:"motivos",style:`background:var(--${e.c}bg);color:var(--${e.c})`});m.append(el("div",{textContent:"Por qué:",style:"font-weight:600;margin-bottom:2px"}));pq.forEach(x=>m.append(el("div",{textContent:"• "+x})));kids.push(m);}
   if(acciones){const a=el("div",{className:"acc"});
     if(e.c!=="sev")a.append(el("button",{className:"btn pri",textContent:"Copiar dirección",onclick:async()=>{try{await navigator.clipboard.writeText(r.direccion);toast("Dirección copiada");}catch(_){toast("No se pudo copiar");}}}));
     a.append(el("button",{className:"btn",textContent:"Comprobante",onclick:async ev=>{const b=ev.currentTarget;b.disabled=true;try{await compartirComprobante(r,firma());}catch(_){toast("No se pudo crear el comprobante");}finally{b.disabled=false;}}}));
@@ -504,6 +504,7 @@ function pintar(box,r,acciones){
   const filas=[["Revisado",new Date(r.fecha).toLocaleString("es-MX",{dateStyle:"medium",timeStyle:"short"})+` · ${r.segundos} s`]];
   if(r.saldo!=null)filas.push(["Saldo",r.saldo.toLocaleString("es-MX",{maximumFractionDigits:2})+" USDT"]);
   if(r.cp.revisadas)filas.push(["Contrapartes revisadas",`${r.cp.revisadas} de ${r.cp.total}`+(r.cp.pasos2?` · ${r.cp.pasos2} orígenes a 2 pasos`:"")]);
+  (r.motivos||[]).forEach(x=>filas.push(["Detalle",x]));
   r.info.forEach(x=>filas.push(["Nota",x]));
   r.fuentes.forEach(f=>filas.push([f.f,f.e==="error"?{t:"Sin respuesta",c:"med"}:f.t?{t:f.t,c:f.c||"ok"}:f.h?{t:"Hallazgo",c:"mal"}:{t:"Sin hallazgos",c:"ok"}]));
   const cont=el("div",{className:"cont"});
@@ -526,6 +527,27 @@ function pintarHist(){
 }
 
 /* ================= comprobante en imagen ================= */
+/* explicación corta y sin tecnicismos de por qué salió MALA o RIESGO MEDIO */
+function porQue(r){
+  const out=[],ya=new Set(),add=(k,t)=>{if(!ya.has(k)){ya.add(k);out.push(t);}};
+  const ms=r&&r.motivos||[],todo=ms.join(" ");
+  for(const x of ms){
+    if(/^A 2 pasos/.test(x))add("p2","Recibió dinero de alguien que antes lo recibió de una wallet sancionada o congelada.");
+    else if(/^Contraparte/.test(x))add("cp","Movió dinero directamente con una wallet "+(/OFAC/.test(x)?"sancionada":"congelada por Tether")+".");
+    else if(/^MistTrack/.test(x)){const m=x.match(/(\d+)\/100/);add("mt","MistTrack le da riesgo "+(m?m[1]+" de 100":"alto")+" por su relación con dinero de origen ilícito.");}
+    else if(/OFAC/.test(x)&&!/no se pudo/i.test(x))add("ofac","Está en la lista de sanciones de EE.UU. (OFAC).");
+    else if(/Tether/.test(x)&&/congel|lista negra/i.test(x)&&!/no se pudo/i.test(x))add("tether","Tether congeló el USDT de esta wallet.");
+    else if(/GoPlus/.test(x))add("goplus","Está reportada por actividad sospechosa (GoPlus).");
+    else if(/Tronscan/.test(x))add("tronscan","Tronscan la tiene marcada como riesgosa.");
+    else if(/^Dinero de paso|^Wallet nueva/.test(x)&&/Dinero de paso/.test(todo)&&/Wallet nueva/.test(todo))add("paso","Wallet recién creada que recibe mucho dinero y lo saca de inmediato, algo típico para esconder su origen.");
+    else if(/^Dinero de paso/.test(x))add("paso1","Recibe mucho dinero y lo saca de inmediato.");
+    else if(/^Wallet nueva/.test(x))add("nueva","Wallet recién creada que ya mueve mucho dinero.");
+    else if(/parece/i.test(x))add("imit","Se parece a otra dirección que ya conoces: puede ser una imitadora.");
+    else if(/no se pudo verificar/i.test(x))add("err","Una de las fuentes no respondió. Repite la revisión.");
+    else add("otro:"+x,x);
+  }
+  return out;
+}
 function textoDesde(r){
   if(!r||!r.desde||!r.desde.fecha||r.resultado==="LIMPIA")return "";
   const f=new Date(r.desde.fecha);if(isNaN(f))return "";
@@ -609,7 +631,7 @@ async function dibujarComprobante(r,firma){
   cx.textAlign="center";cx.fillStyle="#94a3b8";cx.font=`500 26px ${SANS}`;
   cx.fillText(["USDT","Red TRON"].concat(r.cliente?[r.cliente]:[]).join("   ·   "),W/2,y);
   /* motivo */
-  const motivos=(r.motivos||[]).slice(0,2);
+  const motivos=porQue(r).slice(0,2);
   if(motivos.length){
     y+=48;cx.font=`500 29px ${SANS}`;
     const ls=motivos.flatMap(m=>envolver(cx,m,AN-80));
