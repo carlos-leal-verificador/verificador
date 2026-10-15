@@ -391,7 +391,12 @@ async function revisar(d,cliente,prog){
   prog("Revisando sus contrapartes…");
   try{
     const txs=await historial(d);
-    if(!LS.get("mias",[]).includes(d))for(const x of senales(d,txs,txs.length<TX_LEER)){amarillos.push(x.texto);fechas.push([x.ms,x.motivo]);}
+    if(!LS.get("mias",[]).includes(d)){
+      /* 🟠 solo si se juntan las dos señales (wallet nueva + dinero de paso); una sola queda como nota */
+      const ss=senales(d,txs,txs.length<TX_LEER);
+      if(ss.length>=2)for(const x of ss){amarillos.push(x.texto);fechas.push([x.ms,x.motivo]);}
+      else ss.forEach(x=>info.push(x.texto.replace(" Patrón común para esconder el origen del dinero.","")+" (solo informativo)"));
+    }
     if(!txs.length)info.push("Wallet nueva: todavía no ha recibido ni enviado USDT.");
     else if(txs.length>=TX_LEER)info.push(`Se revisaron sus ${TX_LEER} movimientos más recientes.`);
     const g={};
