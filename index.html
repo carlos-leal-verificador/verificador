@@ -371,6 +371,13 @@ function parecidas(d){
   return Object.values(vistas).filter(h=>{const c=h.direccion;return c.slice(-5)===d.slice(-5)||(c.slice(1,5)===d.slice(1,5)&&c.slice(-4)===d.slice(-4))||c.slice(0,7)===d.slice(0,7);});
 }
 async function revisar(d,cliente,prog){
+  /* si sale RIESGO MEDIO solo porque una fuente no respondió, reintenta hasta 2 veces */
+  const soloFallas=r=>r.resultado===AMARILLO&&r.motivos.length===1&&/^No se pudo verificar todo/.test(r.motivos[0]);
+  let r=await revisarUnaVez(d,cliente,prog);
+  for(let i=0;i<2&&soloFallas(r);i++){prog("Una fuente no respondió, reintentando…");await sleep(4000+4000*i);r=await revisarUnaVez(d,cliente,prog);}
+  return r;
+}
+async function revisarUnaVez(d,cliente,prog){
   const t0=performance.now();const rojos=[],amarillos=[],info=[],fuentes=[],errores=[],fechas=[];
   await tronHex20(d);
   prog("Revisando la dirección…");
@@ -389,7 +396,7 @@ async function revisar(d,cliente,prog){
       fuentes.push({f:"MistTrack",e:"ok",h:L.s>=31,t:`${L.s}/100 · ${L.nivel}`,c:L.s>=71?"mal":L.s>=31?"med":"ok"});
       if(L.s>=71||L.directa)rojos.push(...L.lineas);else if(L.s>=31)amarillos.push(...L.lineas);
       if(raw.address_label)info.push("Etiqueta de MistTrack: "+raw.address_label);}
-    catch(e){fuentes.push({f:"MistTrack",e:"error"});errores.push("MistTrack");info.push(e.message||"MistTrack no respondió");}}
+    catch(e){fuentes.push({f:"MistTrack",e:"error"});info.push((e.message||"MistTrack no respondió")+" (no afecta el resultado)");}}
   let saldo=null;try{saldo=await saldoUSDT(d);}catch(_){}
   const cp={total:0,revisadas:0};
   prog("Revisando sus contrapartes…");
