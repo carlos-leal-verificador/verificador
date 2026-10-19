@@ -342,8 +342,12 @@ function senales(d,txs,completo){
   const fmt=v=>v.toLocaleString("es-MX",{maximumFractionDigits:0});
   /* 1) dinero de paso: entra mucho y sale casi todo en menos de 24 h */
   const ent=txs.filter(t=>t.para===d&&t.de!==d&&t.monto>=PASO_MIN&&t.ms);
+  /* saldo justo antes de cada entrada: solo cuenta si la wallet estaba casi vacía (el dinero entra y sale) */
+  const orden=txs.filter(t=>t.ms).slice().sort((x,y)=>x.ms-y.ms);
+  const saldoAntes=e=>{let s=0;for(const t of orden){if(t===e)break;if(t.para===d&&t.de!==d)s+=t.monto;else if(t.de===d&&t.para!==d)s-=t.monto;}return Math.max(0,s);};
   let mejor=null;
   for(const e of ent){
+    if(saldoAntes(e)>e.monto*0.2)continue;
     const sal=txs.filter(t=>t.de===d&&t.para!==d&&t.ms>=e.ms&&t.ms<=e.ms+PASO_HORAS*3600e3).reduce((a,t)=>a+t.monto,0);
     if(sal>=e.monto*PASO_PCT&&(!mejor||e.monto>mejor.monto)){
       const ult=Math.max(...txs.filter(t=>t.de===d&&t.ms>=e.ms&&t.ms<=e.ms+PASO_HORAS*3600e3).map(t=>t.ms));
