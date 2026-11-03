@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f3d2e">
+<title>Calculadora de Compra</title>
+<link rel="manifest" href="compra.json">
+<link rel="icon" href="compra.png">
+<link rel="apple-touch-icon" href="compra.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Calculadora">
+<style>
+:root{
+  --bg:#f3f6f4; --card:#ffffff; --fg:#14211b; --muted:#5d6e66; --line:#d9e2dd;
+  --accent:#0f6b4a; --accent-fg:#ffffff; --soft:#e4f1ea; --warn:#9a5b00; --warnbg:#fff4e0;
+  --num:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0e1512; --card:#16201b; --fg:#e7efe9; --muted:#97a89f; --line:#2a3832;
+  --accent:#3cc48f; --accent-fg:#06281b; --soft:#1c2e25; --warn:#f0b35a; --warnbg:#2c2414; color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 var(--sans);
+  padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 32px max(16px,env(safe-area-inset-left))}
+main{max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+h1{font-size:1.25rem;margin:4px 0 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px}
+label{font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--soft);padding:4px;border-radius:12px}
+.tabs button{border:0;background:transparent;color:var(--fg);padding:10px 6px;border-radius:9px;font:600 .92rem var(--sans);cursor:pointer}
+.tabs button.on{background:var(--accent);color:var(--accent-fg)}
+.campo{display:flex;align-items:center;gap:8px;border:2px solid var(--line);border-radius:12px;padding:6px 12px;background:var(--bg)}
+.campo:focus-within{border-color:var(--accent)}
+.campo input{flex:1;min-width:0;border:0;background:transparent;color:var(--fg);font:600 1.6rem var(--num);padding:6px 0;outline:none}
+.campo span{color:var(--muted);font-weight:600}
+.fila{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.fila b{font-family:var(--num);font-variant-numeric:tabular-nums}
+.small input{font-size:1.15rem}
+.res{background:var(--soft);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:6px}
+.res .t{font-size:.9rem;color:var(--muted)}
+.res .big{font:700 clamp(1.5rem,7.5vw,2.1rem)/1.15 var(--num);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.res .big small{font-size:.5em;color:var(--muted);margin-left:6px}
+.btn{border:0;border-radius:12px;padding:13px;font:700 1rem var(--sans);cursor:pointer;background:var(--accent);color:var(--accent-fg)}
+.btn.sec{background:transparent;color:var(--accent);border:2px solid var(--accent);padding:9px}
+.det{display:flex;flex-direction:column;gap:8px;font-size:.95rem;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin:6px 0}
+.res{gap:10px}
+.aviso{background:var(--warnbg);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:.88rem}
+.fuente{font-size:.8rem;color:var(--muted)}
+a{color:var(--accent)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Calculadora de compra USDT</h1>
+
+  <div class="tabs" role="tablist">
+    <button id="tUsd" class="on">Quiero X dólares</button>
+    <button id="tMxn">Tengo X pesos</button>
+  </div>
+
+  <div class="card">
+    <label id="lblMonto" for="monto">¿Cuántos dólares (USDT) quieres comprar?</label>
+    <div class="campo"><input id="monto" inputmode="decimal" autocomplete="off" value="500,000"><span id="uMonto">USDT</span></div>
+  </div>
+
+  <div class="res" id="tarjeta">
+    <div class="t" id="tRes">Manda esta cantidad de pesos:</div>
+    <div class="big" id="big">—</div>
+    <div class="det">
+      <div class="fila"><span>XE (dólar en pesos)</span><b id="dXe">—</b></div>
+      <div class="fila"><span>Precio con comisión</span><b id="dPrecio">—</b></div>
+      <div class="fila"><span id="lOtro">Recibes</span><b id="dOtro">—</b></div>
+      <div class="fila"><span>Comisión pagada</span><b id="dCom">—</b></div>
+    </div>
+    <button class="btn" id="compartir">Compartir</button>
+    <button class="btn sec" id="copiar">Copiar cantidad</button>
+  </div>
+
+  <div class="card">
+    <label for="xe">XE actual (puedes corregirlo a mano)</label>
+    <div class="campo small"><input id="xe" inputmode="decimal" autocomplete="off"><span>MXN</span></div>
+    <div class="fuente" id="fuente">Buscando precio…</div>
+    <button class="btn sec" id="actualizar">Actualizar precio</button>
+    <div class="aviso">Compara con <a href="https://www.xe.com/es/currencyconverter/convert/?Amount=1&From=USD&To=MXN" target="_blank" rel="noopener">XE.com</a> antes de mandar. En 500,000 dólares, 1 centavo de diferencia en el precio son 5,000 pesos.</div>
+    <label for="pct">Comisión del proveedor</label>
+    <div class="campo small"><input id="pct" inputmode="decimal" autocomplete="off" value="0.5"><span>%</span></div>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let modo = "usd";
+let xeAuto = null;
+
+function num(s){ s = String(s).replace(/[^\d.]/g,""); const n = parseFloat(s); return isFinite(n) ? n : 0; }
+const fmt = (n,d=2) => n.toLocaleString("es-MX",{minimumFractionDigits:d,maximumFractionDigits:d});
+
+function calcular(){
+  const monto = num($("monto").value), xe = num($("xe").value), pct = num($("pct").value);
+  const precio = xe * (1 + pct/100);
+  if(!monto || !xe){ $("big").textContent="—"; ["dXe","dPrecio","dOtro","dCom"].forEach(i=>$(i).textContent="—"); return; }
+  $("dXe").textContent = fmt(xe,4);
+  $("dPrecio").textContent = fmt(precio,4);
+  if(modo==="usd"){
+    const pesos = monto * precio, com = pesos - monto*xe;
+    $("big").innerHTML = "$" + fmt(pesos) + "<small>MXN</small>";
+    $("lOtro").textContent = "Recibes";
+    $("dOtro").textContent = fmt(monto) + " USDT";
+    $("dCom").textContent = "$" + fmt(com) + " MXN";
+    $("big").dataset.copia = pesos.toFixed(2);
+  }else{
+    const usdt = monto / precio, com = monto - monto/(1+pct/100);
+    $("big").innerHTML = fmt(usdt) + "<small>USDT</small>";
+    $("lOtro").textContent = "Mandas";
+    $("dOtro").textContent = "$" + fmt(monto) + " MXN";
+    $("dCom").textContent = "$" + fmt(com) + " MXN";
+    $("big").dataset.copia = usdt.toFixed(2);
+  }
+  try{ localStorage.setItem("pct",$("pct").value); }catch(e){}
+}
+
+function ponModo(m){
+  modo = m;
+  $("tUsd").classList.toggle("on", m==="usd");
+  $("tMxn").classList.toggle("on", m==="mxn");
+  if(m==="usd"){ $("lblMonto").textContent="¿Cuántos dólares (USDT) quieres comprar?"; $("uMonto").textContent="USDT"; $("tRes").textContent="Manda esta cantidad de pesos:"; }
+  else { $("lblMonto").textContent="¿Cuántos pesos vas a mandar?"; $("uMonto").textContent="MXN"; $("tRes").textContent="Vas a recibir:"; }
+  calcular();
+}
+
+function conComas(inp){
+  inp.addEventListener("input", ()=>{
+    const raw = inp.value.replace(/[^\d.]/g,"");
+    const [e,d] = raw.split(".");
+    const ent = e ? Number(e).toLocaleString("en-US") : "";
+    inp.value = d!==undefined ? ent + "." + d : ent;
+    calcular();
+  });
+}
+
+async function traer(url, sacar){
+  const c = new AbortController(); const t = setTimeout(()=>c.abort(), 8000);
+  try{ const r = await fetch(url,{signal:c.signal,cache:"no-store"}); const j = await r.json(); return sacar(j); }
+  finally{ clearTimeout(t); }
+}
+
+async function actualizar(){
+  $("fuente").textContent = "Buscando precio…";
+  const fuentes = [
+    ["Coinbase (precio de mercado)", "https://api.coinbase.com/v2/exchange-rates?currency=USD", j=>parseFloat(j.data.rates.MXN)],
+    ["ExchangeRate-API (se actualiza 1 vez al día)", "https://open.er-api.com/v6/latest/USD", j=>parseFloat(j.rates.MXN)]
+  ];
+  for(const [nombre,url,sacar] of fuentes){
+    try{
+      const v = await traer(url,sacar);
+      if(v > 5 && v < 50){
+        xeAuto = v; $("xe").value = v.toFixed(4);
+        const h = new Date().toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});
+        $("fuente").textContent = "Precio de " + nombre + " a las " + h;
+        calcular(); return;
+      }
+    }catch(e){}
+  }
+  $("fuente").textContent = "No pude traer el precio. Escríbelo a mano copiándolo de XE.";
+}
+
+
+function dibujarImagen(){
+  const W=1080, H=900, c=document.createElement("canvas"); c.width=W; c.height=H;
+  const g=c.getContext("2d");
+  const r=(x,y,w,h,rad,col)=>{g.fillStyle=col;g.beginPath();g.roundRect(x,y,w,h,rad);g.fill();};
+  g.fillStyle="#f3f6f4"; g.fillRect(0,0,W,H);
+  r(40,40,W-80,H-80,40,"#e4f1ea");
+  g.fillStyle="#5d6e66"; g.font="44px system-ui,sans-serif"; g.fillText($("tRes").textContent,90,130);
+  const big=$("big"), sm=big.querySelector("small");
+  const principal=big.firstChild ? big.firstChild.textContent : big.textContent;
+  let fs=104, w;
+  do{ g.font="bold "+fs+"px ui-monospace,monospace"; w=g.measureText(principal).width; fs-=4; }while(w+fs*1.4>W-190 && fs>50);
+  g.fillStyle="#14211b"; g.fillText(principal,90,260);
+  if(sm){ g.fillStyle="#5d6e66"; g.font="bold 46px ui-monospace,monospace"; g.fillText(sm.textContent,90+w+18,260); }
+  r(90,320,W-180,440,32,"#ffffff");
+  const filas=[["XE (dólar en pesos)",$("dXe").textContent],["Precio con comisión",$("dPrecio").textContent],[$("lOtro").textContent,$("dOtro").textContent],["Comisión pagada",$("dCom").textContent]];
+  filas.forEach(([a,b],i)=>{
+    const y=420+i*95;
+    g.fillStyle="#14211b"; g.font="44px system-ui,sans-serif"; g.textAlign="left"; g.fillText(a,135,y);
+    g.font="bold 44px ui-monospace,monospace"; g.textAlign="right"; g.fillText(b,W-135,y); g.textAlign="left";
+  });
+  const f=new Date().toLocaleString("es-MX",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
+  g.fillStyle="#5d6e66"; g.font="34px system-ui,sans-serif"; g.fillText(f,90,815);
+  return new Promise(res=>c.toBlob(res,"image/png"));
+}
+function textoCompartir(){
+  const big=$("big").textContent.replace("MXN"," MXN").replace("USDT"," USDT");
+  return $("tRes").textContent+" "+big+"\nXE: "+$("dXe").textContent+"\nPrecio con comisión: "+$("dPrecio").textContent+"\n"+$("lOtro").textContent+": "+$("dOtro").textContent+"\nComisión pagada: "+$("dCom").textContent;
+}
+$("compartir").onclick = async ()=>{
+  if(!$("big").dataset.copia) return;
+  try{
+    const blob=await dibujarImagen();
+    const file=new File([blob],"compra-usdt.png",{type:"image/png"});
+    if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file]}); return; }
+    if(navigator.share){ await navigator.share({text:textoCompartir()}); return; }
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="compra-usdt.png"; a.click();
+  }catch(e){ if(e && e.name!=="AbortError"){ try{ await navigator.clipboard.writeText(textoCompartir()); $("compartir").textContent="Texto copiado"; setTimeout(()=>$("compartir").textContent="Compartir",1800);}catch(_){} } }
+};
+$("tUsd").onclick = ()=>ponModo("usd");
+$("tMxn").onclick = ()=>ponModo("mxn");
+conComas($("monto"));
+$("xe").addEventListener("input", ()=>{ $("fuente").textContent = "Precio escrito a mano."; calcular(); });
+$("pct").addEventListener("input", calcular);
+$("actualizar").onclick = actualizar;
+$("copiar").onclick = async ()=>{
+  const v = $("big").dataset.copia; if(!v) return;
+  try{ await navigator.clipboard.writeText(v); $("copiar").textContent="¡Copiado!"; }
+  catch(e){ $("copiar").textContent=v; }
+  setTimeout(()=>$("copiar").textContent="Copiar cantidad",1800);
+};
+try{ const p = localStorage.getItem("pct"); if(p) $("pct").value = p; }catch(e){}
+actualizar();
+</script>
+</body>
+</html>

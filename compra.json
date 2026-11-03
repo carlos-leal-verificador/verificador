@@ -1,0 +1,24 @@
+{
+ "id": "compra",
+ "name": "Calculadora de compra USDT",
+ "short_name": "Calculadora",
+ "start_url": "compra.html",
+ "scope": "compra.html",
+ "display": "standalone",
+ "background_color": "#f3f6f4",
+ "theme_color": "#0f3d2e",
+ "icons": [
+  {
+   "src": "compra.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "compra.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "maskable"
+  }
+ ]
+}
