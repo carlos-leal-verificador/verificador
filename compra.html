@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0f3d2e">
+<meta name="theme-color" content="#0e1512">
 <title>Calculadora de Compra</title>
 <link rel="manifest" href="compra.json">
 <link rel="icon" href="compra.png">
@@ -13,14 +13,12 @@
 <meta name="apple-mobile-web-app-title" content="Calculadora">
 <style>
 :root{
-  --bg:#f3f6f4; --card:#ffffff; --fg:#14211b; --muted:#5d6e66; --line:#d9e2dd;
-  --accent:#0f6b4a; --accent-fg:#ffffff; --soft:#e4f1ea; --warn:#9a5b00; --warnbg:#fff4e0;
+  --bg:#0e1512; --card:#16201b; --fg:#e7efe9; --muted:#97a89f; --line:#2a3832;
+  --accent:#3cc48f; --accent-fg:#06281b; --soft:#1c2e25; --warn:#f0b35a; --warnbg:#2c2414;
   --num:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
   --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  color-scheme:dark;
 }
-@media (prefers-color-scheme:dark){:root{
-  --bg:#0e1512; --card:#16201b; --fg:#e7efe9; --muted:#97a89f; --line:#2a3832;
-  --accent:#3cc48f; --accent-fg:#06281b; --soft:#1c2e25; --warn:#f0b35a; --warnbg:#2c2414; color-scheme:dark}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 var(--sans);
   padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 32px max(16px,env(safe-area-inset-left))}
@@ -50,11 +48,27 @@ label{font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacin
 .fuente{font-size:.8rem;color:var(--muted)}
 a{color:var(--accent)}
 button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+.graf{gap:8px}
+.graf .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.graf .ult{font:700 1.6rem var(--num);font-variant-numeric:tabular-nums}
+.graf .cam{font:600 .92rem var(--num)}
+.graf .baja{color:var(--accent)} .graf .sube{color:#ff6b5e}
+.graf .pie{display:flex;justify-content:space-between;gap:6px;font-size:.8rem;color:var(--muted)}
+.graf svg{display:block;width:100%;height:auto}
+.fecha{font-size:.78rem;color:var(--muted);letter-spacing:.02em;margin-bottom:-6px}
 </style>
 </head>
 <body>
 <main>
   <h1>Calculadora de compra USDT</h1>
+
+  <div class="card graf" id="grafica" hidden>
+    <div class="top"><label id="gTit">Dólar hoy</label><span class="fuente" id="gFuente"></span></div>
+    <div class="top"><span class="ult" id="gUlt">—</span><span class="cam" id="gCam"></span></div>
+    <svg id="gSvg" viewBox="0 0 340 110" preserveAspectRatio="none" aria-label="Gráfica del dólar"></svg>
+    <div class="pie"><span id="gIni"></span><span id="gMaxMin"></span><span id="gFin"></span></div>
+  </div>
 
   <div class="tabs" role="tablist">
     <button id="tUsd" class="on">Quiero X dólares</button>
@@ -67,6 +81,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
   </div>
 
   <div class="res" id="tarjeta">
+    <div class="fecha" id="fechaHora"></div>
     <div class="t" id="tRes">Manda esta cantidad de pesos:</div>
     <div class="big" id="big">—</div>
     <div class="det">
@@ -172,24 +187,24 @@ function dibujarImagen(){
   const W=1080, H=900, c=document.createElement("canvas"); c.width=W; c.height=H;
   const g=c.getContext("2d");
   const r=(x,y,w,h,rad,col)=>{g.fillStyle=col;g.beginPath();g.roundRect(x,y,w,h,rad);g.fill();};
-  g.fillStyle="#f3f6f4"; g.fillRect(0,0,W,H);
-  r(40,40,W-80,H-80,40,"#e4f1ea");
-  g.fillStyle="#5d6e66"; g.font="44px system-ui,sans-serif"; g.fillText($("tRes").textContent,90,130);
+  g.fillStyle="#0e1512"; g.fillRect(0,0,W,H);
+  r(40,40,W-80,H-80,40,"#1c2e25");
+  g.fillStyle="#97a89f"; g.font="34px system-ui,sans-serif"; g.fillText($("fechaHora").textContent,90,115);
+  g.translate(0,40);
+  g.fillStyle="#97a89f"; g.font="44px system-ui,sans-serif"; g.fillText($("tRes").textContent,90,130);
   const big=$("big"), sm=big.querySelector("small");
   const principal=big.firstChild ? big.firstChild.textContent : big.textContent;
   let fs=104, w;
   do{ g.font="bold "+fs+"px ui-monospace,monospace"; w=g.measureText(principal).width; fs-=4; }while(w+fs*1.4>W-190 && fs>50);
-  g.fillStyle="#14211b"; g.fillText(principal,90,260);
-  if(sm){ g.fillStyle="#5d6e66"; g.font="bold 46px ui-monospace,monospace"; g.fillText(sm.textContent,90+w+18,260); }
-  r(90,320,W-180,440,32,"#ffffff");
+  g.fillStyle="#3cc48f"; g.fillText(principal,90,260);
+  if(sm){ g.fillStyle="#97a89f"; g.font="bold 46px ui-monospace,monospace"; g.fillText(sm.textContent,90+w+18,260); }
+  r(90,320,W-180,440,32,"#16201b");
   const filas=[["XE (dólar en pesos)",$("dXe").textContent],["Precio con comisión",$("dPrecio").textContent],[$("lOtro").textContent,$("dOtro").textContent],["Comisión pagada",$("dCom").textContent]];
   filas.forEach(([a,b],i)=>{
     const y=420+i*95;
-    g.fillStyle="#14211b"; g.font="44px system-ui,sans-serif"; g.textAlign="left"; g.fillText(a,135,y);
+    g.fillStyle="#e7efe9"; g.font="44px system-ui,sans-serif"; g.textAlign="left"; g.fillText(a,135,y);
     g.font="bold 44px ui-monospace,monospace"; g.textAlign="right"; g.fillText(b,W-135,y); g.textAlign="left";
   });
-  const f=new Date().toLocaleString("es-MX",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
-  g.fillStyle="#5d6e66"; g.font="34px system-ui,sans-serif"; g.fillText(f,90,815);
   return new Promise(res=>c.toBlob(res,"image/png"));
 }
 function textoCompartir(){
@@ -206,12 +221,59 @@ $("compartir").onclick = async ()=>{
     const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="compra-usdt.png"; a.click();
   }catch(e){ if(e && e.name!=="AbortError"){ try{ await navigator.clipboard.writeText(textoCompartir()); $("compartir").textContent="Texto copiado"; setTimeout(()=>$("compartir").textContent="Compartir",1800);}catch(_){} } }
 };
+
+async function datosHoy(){
+  const j = await traer("https://api.coingecko.com/api/v3/coins/tether/market_chart?vs_currency=mxn&days=1", j=>j);
+  const p = (j.prices||[]).filter(x=>x[1]>5 && x[1]<50);
+  if(p.length < 10) throw 0;
+  return {tit:"Dólar últimas 24 h", fuente:"USDT · CoinGecko", pts:p.map(x=>({t:x[0],v:x[1]})), hora:true};
+}
+async function datosMes(){
+  const ini = new Date(Date.now()-31*864e5).toISOString().slice(0,10);
+  const j = await traer("https://api.frankfurter.app/"+ini+"..?from=USD&to=MXN", j=>j);
+  const pts = Object.keys(j.rates||{}).sort().map(k=>({t:Date.parse(k+"T12:00:00"),v:j.rates[k].MXN}));
+  if(pts.length < 5) throw 0;
+  return {tit:"Dólar últimos 30 días", fuente:"Banco Central Europeo", pts, hora:false};
+}
+async function cargarGrafica(){
+  let d=null;
+  try{ d = await datosHoy(); }catch(e){ try{ d = await datosMes(); }catch(_){} }
+  if(!d){ $("grafica").hidden = true; return; }
+  let pts = d.pts;
+  if(pts.length > 80){ const k = Math.ceil(pts.length/80); pts = pts.filter((_,i)=>i%k===0 || i===d.pts.length-1); }
+  const vs = pts.map(x=>x.v), mn = Math.min(...vs), mx = Math.max(...vs), pad = (mx-mn)*0.12 || 0.01;
+  const W=340,H=110, X=i=>4+i*(W-8)/(pts.length-1), Y=v=>6+(mx+pad-v)/((mx+pad)-(mn-pad))*(H-12);
+  const linea = pts.map((x,i)=>X(i).toFixed(1)+","+Y(x.v).toFixed(1)).join(" ");
+  const ult = vs[vs.length-1], cam = ult - vs[0], pc = cam/vs[0]*100;
+  $("gSvg").innerHTML =
+    '<defs><linearGradient id="gA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".28"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>'+
+    '<g stroke="var(--line)" stroke-width="1"><line x1="0" x2="'+W+'" y1="'+(H/3)+'" y2="'+(H/3)+'"/><line x1="0" x2="'+W+'" y1="'+(2*H/3)+'" y2="'+(2*H/3)+'"/></g>'+
+    '<polygon points="4,'+H+' '+linea+' '+(W-4)+','+H+'" fill="url(#gA)"/>'+
+    '<polyline points="'+linea+'" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>'+
+    '<circle cx="'+X(pts.length-1)+'" cy="'+Y(ult)+'" r="4" fill="var(--accent)"/>';
+  $("gTit").textContent = d.tit;
+  $("gFuente").textContent = d.fuente;
+  $("gUlt").textContent = ult.toFixed(4);
+  $("gCam").textContent = (cam<0?"▼ ":"▲ ") + Math.abs(cam).toFixed(4) + " (" + Math.abs(pc).toFixed(2) + "%)";
+  $("gCam").className = "cam " + (cam<0?"baja":"sube");
+  const f = t => d.hora ? new Date(t).toLocaleTimeString("es-MX",{hour:"numeric",minute:"2-digit"}) : new Date(t).toLocaleDateString("es-MX",{day:"numeric",month:"short"});
+  $("gIni").textContent = d.hora ? "Hace 24 h" : f(pts[0].t);
+  $("gMaxMin").textContent = "Máx " + mx.toFixed(3) + " · Mín " + mn.toFixed(3);
+  $("gFin").textContent = "Ahora";
+  $("grafica").hidden = false;
+}
+
+function ponFecha(){
+  const d=new Date();
+  $("fechaHora").textContent = d.toLocaleDateString("es-MX",{weekday:"long",day:"numeric",month:"long",year:"numeric"}) + " · " + d.toLocaleTimeString("es-MX",{hour:"numeric",minute:"2-digit"});
+}
+ponFecha(); setInterval(ponFecha, 20000);
 $("tUsd").onclick = ()=>ponModo("usd");
 $("tMxn").onclick = ()=>ponModo("mxn");
 conComas($("monto"));
 $("xe").addEventListener("input", ()=>{ $("fuente").textContent = "Precio escrito a mano."; calcular(); });
 $("pct").addEventListener("input", calcular);
-$("actualizar").onclick = actualizar;
+$("actualizar").onclick = ()=>{ actualizar(); cargarGrafica(); };
 $("copiar").onclick = async ()=>{
   const v = $("big").dataset.copia; if(!v) return;
   try{ await navigator.clipboard.writeText(v); $("copiar").textContent="¡Copiado!"; }
@@ -220,6 +282,7 @@ $("copiar").onclick = async ()=>{
 };
 try{ const p = localStorage.getItem("pct"); if(p) $("pct").value = p; }catch(e){}
 actualizar();
+cargarGrafica();
 </script>
 </body>
 </html>
