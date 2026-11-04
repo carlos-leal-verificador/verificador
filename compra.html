@@ -100,10 +100,10 @@ const fmt = (n,d=2) => n.toLocaleString("es-MX",{minimumFractionDigits:d,maximum
 
 function calcular(){
   const monto = num($("monto").value), xe = num($("xe").value), pct = num($("pct").value);
-  const precio = xe * (1 + pct/100);
+  const precio = Math.round(xe * (1 + pct/100) * 1000) / 1000; // el proveedor redondea a 3 decimales
   if(!monto || !xe){ $("big").textContent="—"; ["dXe","dPrecio","dOtro","dCom"].forEach(i=>$(i).textContent="—"); return; }
   $("dXe").textContent = fmt(xe,4);
-  $("dPrecio").textContent = fmt(precio,4);
+  $("dPrecio").textContent = fmt(precio,3);
   if(modo==="usd"){
     const pesos = monto * precio, com = pesos - monto*xe;
     $("big").innerHTML = "$" + fmt(pesos) + "<small>MXN</small>";
@@ -112,7 +112,7 @@ function calcular(){
     $("dCom").textContent = "$" + fmt(com) + " MXN";
     $("big").dataset.copia = pesos.toFixed(2);
   }else{
-    const usdt = monto / precio, com = monto - monto/(1+pct/100);
+    const usdt = monto / precio, com = monto - usdt*xe;
     $("big").innerHTML = fmt(usdt) + "<small>USDT</small>";
     $("lOtro").textContent = "Mandas";
     $("dOtro").textContent = "$" + fmt(monto) + " MXN";
