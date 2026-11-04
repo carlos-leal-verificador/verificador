@@ -55,7 +55,8 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
 .graf .cam{font:600 .92rem var(--num)}
 .graf .baja{color:var(--accent)} .graf .sube{color:#ff6b5e}
 .graf .pie{display:flex;justify-content:space-between;gap:6px;font-size:.8rem;color:var(--muted)}
-.graf svg{display:block;width:100%;height:auto}
+.graf svg{display:block;width:100%;height:auto;touch-action:pan-y;cursor:crosshair}
+.graf .dedo{font-size:.78rem;color:var(--muted)}
 .fecha{font-size:.78rem;color:var(--muted);letter-spacing:.02em;margin-bottom:-6px}
 </style>
 </head>
@@ -68,6 +69,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
     <div class="top"><span class="ult" id="gUlt">—</span><span class="cam" id="gCam"></span></div>
     <svg id="gSvg" viewBox="0 0 340 110" preserveAspectRatio="none" aria-label="Gráfica del dólar"></svg>
     <div class="pie"><span id="gIni"></span><span id="gMaxMin"></span><span id="gFin"></span></div>
+    <div class="dedo">Desliza el dedo sobre la gráfica para ver precio y hora</div>
   </div>
 
   <div class="tabs" role="tablist">
@@ -222,6 +224,47 @@ $("compartir").onclick = async ()=>{
   }catch(e){ if(e && e.name!=="AbortError"){ try{ await navigator.clipboard.writeText(textoCompartir()); $("compartir").textContent="Texto copiado"; setTimeout(()=>$("compartir").textContent="Compartir",1800);}catch(_){} } }
 };
 
+
+let gD = null;
+function pintaCabeza(v, etiqueta){
+  const cam = v - gD.ini, pc = cam/gD.ini*100;
+  $("gUlt").textContent = v.toFixed(4);
+  $("gCam").textContent = (cam<0?"▼ ":"▲ ") + Math.abs(cam).toFixed(4) + " (" + Math.abs(pc).toFixed(2) + "%)";
+  $("gCam").className = "cam " + (cam<0?"baja":"sube");
+  $("gFuente").textContent = etiqueta || gD.fuente;
+  $("gFuente").style.color = etiqueta ? "var(--fg)" : "";
+}
+function cuando(t){
+  const d = new Date(t);
+  if(!gD.hora) return d.toLocaleDateString("es-MX",{weekday:"short",day:"numeric",month:"short"});
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const dia = d >= hoy ? "Hoy" : "Ayer";
+  return dia + " " + d.toLocaleTimeString("es-MX",{hour:"numeric",minute:"2-digit"});
+}
+function tocar(ev){
+  if(!gD) return;
+  const r = $("gSvg").getBoundingClientRect();
+  const x = (ev.clientX - r.left) / r.width * 340;
+  const n = gD.pts.length;
+  let i = Math.round((x - 4) / ((340-8)/(n-1)));
+  i = Math.max(0, Math.min(n-1, i));
+  const p = gD.pts[i], cx = gD.X(i), cy = gD.Y(p.v);
+  const L = $("gLin"), P = $("gPto");
+  L.setAttribute("x1",cx); L.setAttribute("x2",cx); L.setAttribute("visibility","visible");
+  P.setAttribute("cx",cx); P.setAttribute("cy",cy); P.setAttribute("visibility","visible");
+  pintaCabeza(p.v, cuando(p.t));
+}
+function soltar(){
+  if(!gD) return;
+  $("gLin").setAttribute("visibility","hidden"); $("gPto").setAttribute("visibility","hidden");
+  pintaCabeza(gD.ult);
+}
+(function(){
+  const sv = $("gSvg");
+  sv.addEventListener("pointerdown", e=>{ try{ sv.setPointerCapture(e.pointerId); }catch(_){} tocar(e); });
+  sv.addEventListener("pointermove", e=>{ if(e.pointerType!=="mouse" && !e.buttons && e.pressure===0) return; tocar(e); });
+  ["pointerup","pointercancel","pointerleave"].forEach(t=>sv.addEventListener(t, soltar));
+})();
 async function datosHoy(){
   const j = await traer("https://api.coingecko.com/api/v3/coins/tether/market_chart?vs_currency=mxn&days=1", j=>j);
   const p = (j.prices||[]).filter(x=>x[1]>5 && x[1]<50);
@@ -245,17 +288,18 @@ async function cargarGrafica(){
   const W=340,H=110, X=i=>4+i*(W-8)/(pts.length-1), Y=v=>6+(mx+pad-v)/((mx+pad)-(mn-pad))*(H-12);
   const linea = pts.map((x,i)=>X(i).toFixed(1)+","+Y(x.v).toFixed(1)).join(" ");
   const ult = vs[vs.length-1], cam = ult - vs[0], pc = cam/vs[0]*100;
+  gD = {pts, X, Y, hora:d.hora, fuente:d.fuente, ult, ini:vs[0], H};
   $("gSvg").innerHTML =
     '<defs><linearGradient id="gA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".28"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>'+
     '<g stroke="var(--line)" stroke-width="1"><line x1="0" x2="'+W+'" y1="'+(H/3)+'" y2="'+(H/3)+'"/><line x1="0" x2="'+W+'" y1="'+(2*H/3)+'" y2="'+(2*H/3)+'"/></g>'+
     '<polygon points="4,'+H+' '+linea+' '+(W-4)+','+H+'" fill="url(#gA)"/>'+
     '<polyline points="'+linea+'" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>'+
-    '<circle cx="'+X(pts.length-1)+'" cy="'+Y(ult)+'" r="4" fill="var(--accent)"/>';
+    '<circle cx="'+X(pts.length-1)+'" cy="'+Y(ult)+'" r="4" fill="var(--accent)"/>'+
+    '<line id="gLin" x1="0" x2="0" y1="0" y2="'+H+'" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" visibility="hidden"/>'+
+    '<circle id="gPto" r="5" fill="var(--fg)" stroke="var(--accent)" stroke-width="2" visibility="hidden"/>';
   $("gTit").textContent = d.tit;
   $("gFuente").textContent = d.fuente;
-  $("gUlt").textContent = ult.toFixed(4);
-  $("gCam").textContent = (cam<0?"▼ ":"▲ ") + Math.abs(cam).toFixed(4) + " (" + Math.abs(pc).toFixed(2) + "%)";
-  $("gCam").className = "cam " + (cam<0?"baja":"sube");
+  pintaCabeza(ult);
   const f = t => d.hora ? new Date(t).toLocaleTimeString("es-MX",{hour:"numeric",minute:"2-digit"}) : new Date(t).toLocaleDateString("es-MX",{day:"numeric",month:"short"});
   $("gIni").textContent = d.hora ? "Hace 24 h" : f(pts[0].t);
   $("gMaxMin").textContent = "Máx " + mx.toFixed(3) + " · Mín " + mn.toFixed(3);
