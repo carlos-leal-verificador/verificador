@@ -56,6 +56,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
 .graf .baja{color:var(--accent)} .graf .sube{color:#ff6b5e}
 .graf .pie{display:flex;justify-content:space-between;gap:6px;font-size:.8rem;color:var(--muted)}
 .graf svg{display:block;width:100%;height:auto;touch-action:pan-y;cursor:crosshair}
+.graf #gHora{font-size:.85rem}
 .graf .dedo{font-size:.78rem;color:var(--muted)}
 .fecha{font-size:.78rem;color:var(--muted);letter-spacing:.02em;margin-bottom:-6px}
 </style>
@@ -67,6 +68,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
   <div class="card graf" id="grafica" hidden>
     <div class="top"><label id="gTit">Dólar hoy</label><span class="fuente" id="gFuente"></span></div>
     <div class="top"><span class="ult" id="gUlt">—</span><span class="cam" id="gCam"></span></div>
+    <div class="top"><span class="dedo" id="gHoraLbl">Última hora</span><span class="cam" id="gHora"></span></div>
     <svg id="gSvg" viewBox="0 0 340 110" preserveAspectRatio="none" aria-label="Gráfica del dólar"></svg>
     <div class="pie"><span id="gIni"></span><span id="gMaxMin"></span><span id="gFin"></span></div>
     <div class="dedo">Desliza el dedo sobre la gráfica para ver precio y hora</div>
@@ -241,8 +243,10 @@ function cuando(t){
   const dia = d >= hoy ? "Hoy" : "Ayer";
   return dia + " " + d.toLocaleTimeString("es-MX",{hour:"numeric",minute:"2-digit"});
 }
+let gTocando=false;
 function tocar(ev){
   if(!gD) return;
+  gTocando=true;
   const r = $("gSvg").getBoundingClientRect();
   const x = (ev.clientX - r.left) / r.width * 340;
   const n = gD.pts.length;
@@ -255,6 +259,7 @@ function tocar(ev){
   pintaCabeza(p.v, cuando(p.t));
 }
 function soltar(){
+  gTocando=false;
   if(!gD) return;
   $("gLin").setAttribute("visibility","hidden"); $("gPto").setAttribute("visibility","hidden");
   pintaCabeza(gD.ult);
@@ -283,7 +288,7 @@ async function cargarGrafica(){
   try{ d = await datosHoy(); }catch(e){ try{ d = await datosMes(); }catch(_){} }
   if(!d){ $("grafica").hidden = true; return; }
   let pts = d.pts;
-  if(pts.length > 80){ const k = Math.ceil(pts.length/80); pts = pts.filter((_,i)=>i%k===0 || i===d.pts.length-1); }
+  if(pts.length > 400){ const k = Math.ceil(pts.length/400); pts = pts.filter((_,i)=>i%k===0 || i===d.pts.length-1); }
   const vs = pts.map(x=>x.v), mn = Math.min(...vs), mx = Math.max(...vs), pad = (mx-mn)*0.12 || 0.01;
   const W=340,H=110, X=i=>4+i*(W-8)/(pts.length-1), Y=v=>6+(mx+pad-v)/((mx+pad)-(mn-pad))*(H-12);
   const linea = pts.map((x,i)=>X(i).toFixed(1)+","+Y(x.v).toFixed(1)).join(" ");
@@ -300,10 +305,17 @@ async function cargarGrafica(){
   $("gTit").textContent = d.tit;
   $("gFuente").textContent = d.fuente;
   pintaCabeza(ult);
+  const hace1h = pts[pts.length-1].t - 3600e3, j = pts.findIndex(x=>x.t >= hace1h);
+  if(d.hora && j >= 0 && j < pts.length-1){
+    const c1 = ult - pts[j].v;
+    $("gHora").textContent = (c1<0?"▼ ":c1>0?"▲ ":"= ") + Math.abs(c1).toFixed(4) + (c1<0?" bajando":c1>0?" subiendo":" sin cambio");
+    $("gHora").className = "cam " + (c1<0?"baja":"sube");
+    $("gHoraLbl").parentNode.hidden = false;
+  } else { $("gHoraLbl").parentNode.hidden = true; }
+  $("gFin").textContent = "Ahora · " + new Date().toLocaleTimeString("es-MX",{hour:"numeric",minute:"2-digit"});
   const f = t => d.hora ? new Date(t).toLocaleTimeString("es-MX",{hour:"numeric",minute:"2-digit"}) : new Date(t).toLocaleDateString("es-MX",{day:"numeric",month:"short"});
   $("gIni").textContent = d.hora ? "Hace 24 h" : f(pts[0].t);
   $("gMaxMin").textContent = "Máx " + mx.toFixed(3) + " · Mín " + mn.toFixed(3);
-  $("gFin").textContent = "Ahora";
   $("grafica").hidden = false;
 }
 
@@ -327,6 +339,8 @@ $("copiar").onclick = async ()=>{
 try{ const p = localStorage.getItem("pct"); if(p) $("pct").value = p; }catch(e){}
 actualizar();
 cargarGrafica();
+setInterval(()=>{ if(!document.hidden && !gTocando) cargarGrafica(); }, 5*60*1000);
+document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && !gTocando) cargarGrafica(); });
 </script>
 </body>
 </html>
