@@ -59,6 +59,9 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
 .graf #gHora{font-size:.85rem}
 .graf .dedo{font-size:.78rem;color:var(--muted)}
 .fecha{font-size:.78rem;color:var(--muted);letter-spacing:.02em;margin-bottom:-6px}
+.filaxe{display:flex;gap:8px;align-items:stretch}
+.filaxe .campo{flex:1;min-width:0}
+.filaxe .btn{padding:0 16px;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -100,7 +103,10 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
 
   <div class="card">
     <label for="xe">XE actual (puedes corregirlo a mano)</label>
-    <div class="campo small"><input id="xe" inputmode="decimal" autocomplete="off"><span>MXN</span></div>
+    <div class="filaxe">
+      <div class="campo small"><input id="xe" inputmode="decimal" autocomplete="off"><span>MXN</span></div>
+      <button class="btn" id="pegarXe" type="button">📋 Pegar XE</button>
+    </div>
     <div class="fuente" id="fuente">Buscando precio…</div>
     <button class="btn sec" id="actualizar">Actualizar precio</button>
     <div class="aviso">Compara con <a href="https://www.xe.com/es/currencyconverter/convert/?Amount=1&From=USD&To=MXN" target="_blank" rel="noopener">XE.com</a> antes de mandar. En 500,000 dólares, 1 centavo de diferencia en el precio son 5,000 pesos.</div>
@@ -178,7 +184,7 @@ async function actualizar(){
       if(v > 5 && v < 50){
         xeAuto = v; $("xe").value = v.toFixed(4);
         const h = new Date().toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});
-        $("fuente").textContent = "Precio de " + nombre + " a las " + h;
+        $("fuente").style.color=""; $("fuente").textContent = "Precio de " + nombre + " a las " + h;
         calcular(); return;
       }
     }catch(e){}
@@ -327,7 +333,38 @@ ponFecha(); setInterval(ponFecha, 20000);
 $("tUsd").onclick = ()=>ponModo("usd");
 $("tMxn").onclick = ()=>ponModo("mxn");
 conComas($("monto"));
-$("xe").addEventListener("input", ()=>{ $("fuente").textContent = "Precio escrito a mano."; calcular(); });
+$("xe").addEventListener("input", ()=>{ $("fuente").textContent = "Precio escrito a mano."; $("fuente").style.color=""; calcular(); });
+function sacaXe(txt){
+  const m = String(txt||"").replace(/\s/g," ").match(/\d{1,2}[.,]\d{2,6}/g) || [];
+  for(const x of m){ const v = parseFloat(x.replace(",", ".")); if(v > 5 && v < 50) return v; }
+  return null;
+}
+function ponXePegado(v){
+  $("xe").value = String(v);
+  const h = new Date().toLocaleTimeString("es-MX",{hour:"numeric",minute:"2-digit"});
+  $("fuente").textContent = "✅ Pegado de XE a las " + h;
+  $("fuente").style.color = "var(--accent)";
+  calcular();
+}
+$("pegarXe").onclick = async ()=>{
+  try{
+    const t = await navigator.clipboard.readText();
+    const v = sacaXe(t);
+    if(v){ ponXePegado(v); return; }
+    $("fuente").textContent = "No encontré un precio en lo que copiaste. Copia el número de XE y vuelve a tocar Pegar.";
+    $("fuente").style.color = "var(--warn)";
+  }catch(e){
+    $("xe").focus(); $("xe").select();
+    $("fuente").textContent = "Mantén presionado el cuadro del XE y elige Pegar.";
+    $("fuente").style.color = "var(--warn)";
+  }
+};
+$("xe").addEventListener("paste", ev=>{
+  const t = (ev.clipboardData||window.clipboardData)?.getData("text");
+  const v = sacaXe(t);
+  if(v){ ev.preventDefault(); ponXePegado(v); }
+});
+
 $("pct").addEventListener("input", calcular);
 $("actualizar").onclick = ()=>{ actualizar(); cargarGrafica(); };
 $("copiar").onclick = async ()=>{
