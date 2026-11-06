@@ -63,6 +63,9 @@ label{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacin
 .saldo .monto{font:700 2rem/1.1 var(--num);color:var(--accent);overflow-wrap:anywhere}
 .saldo .monto.neg{color:var(--rojo)}
 .mov.a{border-left-color:var(--warn)}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:-4px}
+.chip{border:2px solid var(--line);background:var(--bg);color:var(--fg);border-radius:999px;padding:8px 18px;font:700 .95rem var(--sans);cursor:pointer}
+.chip.on{border-color:var(--accent);background:var(--soft);color:var(--accent)}
 .vacio{color:var(--muted);font-size:.92rem;text-align:center;padding:10px}
 input[type=date]{background:var(--bg);color:var(--fg);border:2px solid var(--line);border-radius:10px;padding:6px 10px;font:600 .95rem var(--sans)}
 .nota{font-size:.8rem;color:var(--muted)}
@@ -113,6 +116,10 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
   <div class="card" id="fEnt" hidden>
     <div><label for="eProv">Proveedor</label>
       <div class="campo"><input id="eProv" class="txt" list="proveedores" autocomplete="off" placeholder="Regio"></div></div>
+    <div class="chips" id="chipsProv">
+      <button class="chip" type="button" data-prov="Regio">Regio</button>
+      <button class="chip" type="button" data-prov="Kapital">Kapital</button>
+    </div>
     <datalist id="proveedores"></datalist>
     <div><label for="ePesos">Pesos que mandaste</label>
       <div class="campo"><input id="ePesos" inputmode="decimal" autocomplete="off" placeholder="4,736,250"><span>MXN</span></div></div>
@@ -317,6 +324,9 @@ $("ajGuardar").onclick = ()=>{
 };
 conComas($("ajMonto"));
 setInterval(()=>{ $("saldoFecha").textContent = fechaLarga(Date.now()); }, 30000);
+function marcaProv(){ const v=$("eProv").value.trim().toLowerCase(); document.querySelectorAll("#chipsProv .chip").forEach(c=>c.classList.toggle("on", c.dataset.prov.toLowerCase()===v)); }
+document.querySelectorAll("#chipsProv .chip").forEach(c=>c.onclick=()=>{ $("eProv").value=c.dataset.prov; marcaProv(); });
+$("eProv").addEventListener("input", marcaProv);
 $("bSal").onclick = ()=>ponTipo("s");
 $("bEnt").onclick = ()=>ponTipo("e");
 conComas($("sMonto"), calcSal);
@@ -327,6 +337,7 @@ $("dia").addEventListener("change", pinta);
 $("sPct").value = leer("ultPct", "");
 $("eProv").value = leer("ultProv", "Regio");
 $("dia").value = diaDe(Date.now());
+marcaProv();
 pinta();
 </script>
 </body>
