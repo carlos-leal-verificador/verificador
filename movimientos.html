@@ -114,18 +114,20 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
 
   <!-- COMPRA -->
   <div class="card" id="fEnt" hidden>
-    <div><label for="eProv">Proveedor</label>
+    <div><label for="eProv">Proveedor (opcional)</label>
       <div class="campo"><input id="eProv" class="txt" list="proveedores" autocomplete="off" placeholder="Regio"></div></div>
     <div class="chips" id="chipsProv">
       <button class="chip" type="button" data-prov="Regio">Regio</button>
       <button class="chip" type="button" data-prov="Kapital">Kapital</button>
     </div>
     <datalist id="proveedores"></datalist>
-    <div><label for="ePesos">Pesos que mandaste</label>
+    <div><label for="ePesos">Pesos que mandaste (opcional)</label>
       <div class="campo"><input id="ePesos" inputmode="decimal" autocomplete="off" placeholder="4,736,250"><span>MXN</span></div></div>
-    <div><label for="eTc">Tipo de cambio</label>
+    <div><label for="eTc">Tipo de cambio (opcional)</label>
       <div class="campo"><input id="eTc" inputmode="decimal" autocomplete="off" placeholder="18.945"><span>MXN</span></div></div>
-    <div class="calc"><span>Recibiste</span><b id="eUsdt">—</b></div>
+    <div><label for="eUsdt">USDT que recibiste</label>
+      <div class="campo"><input id="eUsdt" inputmode="decimal" autocomplete="off" placeholder="5,000"><span>USDT</span></div>
+      <div class="nota" style="margin-top:4px">Con pesos y tipo de cambio se calcula solo. Si no hubo tipo de cambio (por ejemplo, un regalo), escribe aquí los USDT.</div></div>
     <button class="btn" id="eGuardar" type="button">Guardar compra</button>
   </div>
 
@@ -197,7 +199,7 @@ function calcSal(){
 }
 function calcEnt(){
   const pe = num($("ePesos").value), tc = num($("eTc").value);
-  $("eUsdt").textContent = (pe && tc) ? fmt2(pe/tc) + " USDT" : "—";
+  if(pe && tc) $("eUsdt").value = fmt2(pe/tc);
 }
 
 const fechaLarga = t => new Date(t).toLocaleDateString("es-MX",{weekday:"long",day:"numeric",month:"long",year:"numeric"}) + " · " + hora(t);
@@ -210,7 +212,8 @@ function textoSaldo(){ return "💰 Saldo wallet\n$" + fmt2(saldos().total) + " 
 function texto(m){
   if(m.t==="a") return "⚖️ Saldo inicial\n$" + fmt2(m.usdt) + " USDT";
   if(m.t==="s") return "⭕️ Salida wallet\n$" + fmt(m.usdt) + (m.pct ? "\n+" + m.pct + "%" : "") + "\n" + m.cli;
-  return "✅ Compra moneda " + m.prov + "\n$" + fmt2(m.pesos) + " MXN\nTC " + m.tc + "\n" + fmt2(m.usdt) + " USDT";
+  const tit = m.pesos ? "✅ Compra moneda" + (m.prov ? " " + m.prov : "") : "✅ Entrada wallet" + (m.prov ? " " + m.prov : "");
+  return tit + (m.pesos ? "\n$" + fmt2(m.pesos) + " MXN" : "") + (m.tc ? "\nTC " + m.tc : "") + "\n" + fmt2(m.usdt) + " USDT";
 }
 
 function avisa(inp){ inp.parentNode.style.borderColor="var(--rojo)"; inp.focus(); setTimeout(()=>inp.parentNode.style.borderColor="",1500); }
@@ -237,12 +240,12 @@ $("sGuardar").onclick = ()=>{
 };
 $("eGuardar").onclick = ()=>{
   const prov = $("eProv").value.trim(), pesos = num($("ePesos").value), tcTxt = $("eTc").value.trim(), tc = num(tcTxt);
-  if(!prov) return avisa($("eProv"));
-  if(!pesos) return avisa($("ePesos"));
-  if(!tc || tc<5 || tc>50) return avisa($("eTc"));
-  escribir("ultProv", prov);
-  guardar({id:Date.now(), f:Date.now(), t:"e", prov, pesos, tc, usdt: Math.round(pesos/tc*100)/100});
-  $("ePesos").value=""; $("eTc").value=""; calcEnt();
+  const usdt = num($("eUsdt").value);
+  if(tcTxt && (tc<5 || tc>50)) return avisa($("eTc"));
+  if(!usdt) return avisa($("eUsdt"));
+  if(prov) escribir("ultProv", prov);
+  guardar({id:Date.now(), f:Date.now(), t:"e", prov, pesos, tc, usdt: Math.round(usdt*100)/100});
+  $("ePesos").value=""; $("eTc").value=""; $("eUsdt").value="";
 };
 
 async function compartirTexto(t, btn){
@@ -293,7 +296,7 @@ function pinta(){
   });
   const clis = [...new Set(movs.filter(m=>m.t==="s").map(m=>m.cli))];
   $("clientes").innerHTML = clis.map(c=>'<option value="'+c.replace(/"/g,"&quot;")+'">').join("");
-  const provs = [...new Set(movs.filter(m=>m.t==="e").map(m=>m.prov))];
+  const provs = [...new Set(movs.filter(m=>m.t==="e"&&m.prov).map(m=>m.prov))];
   $("proveedores").innerHTML = provs.map(c=>'<option value="'+c.replace(/"/g,"&quot;")+'">').join("");
 }
 
@@ -302,7 +305,7 @@ $("respaldo").onclick = async ()=>{
   const filas = [["Fecha","Hora","Tipo","Cliente/Proveedor","USDT","Porcentaje","Cobro USDT","Pesos","Tipo de cambio","Saldo USDT"]];
   movs.slice().sort((a,b)=>a.f-b.f).forEach(m=>{
     const d = new Date(m.f);
-    filas.push([d.toLocaleDateString("es-MX"), hora(m.f), m.t==="s"?"Salida":m.t==="e"?"Compra":"Ajuste de saldo", m.t==="s"?m.cli:m.t==="e"?m.prov:"", m.usdt, m.t==="s"&&m.pct?m.pct:"", m.t==="s"&&m.cobro?m.cobro:"", m.t==="e"?m.pesos:"", m.t==="e"?m.tc:"", sdR[m.id]]);
+    filas.push([d.toLocaleDateString("es-MX"), hora(m.f), m.t==="s"?"Salida":m.t==="e"?"Compra":"Ajuste de saldo", m.t==="s"?m.cli:m.t==="e"?m.prov:"", m.usdt, m.t==="s"&&m.pct?m.pct:"", m.t==="s"&&m.cobro?m.cobro:"", m.t==="e"&&m.pesos?m.pesos:"", m.t==="e"&&m.tc?m.tc:"", sdR[m.id]]);
   });
   const csv = "﻿" + filas.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(",")).join("\n");
   const nombre = "movimientos-" + diaDe(Date.now()) + ".csv";
@@ -331,6 +334,7 @@ $("bSal").onclick = ()=>ponTipo("s");
 $("bEnt").onclick = ()=>ponTipo("e");
 conComas($("sMonto"), calcSal);
 conComas($("ePesos"), calcEnt);
+conComas($("eUsdt"));
 $("sPct").addEventListener("input", calcSal);
 $("eTc").addEventListener("input", calcEnt);
 $("dia").addEventListener("change", pinta);
