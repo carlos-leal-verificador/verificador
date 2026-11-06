@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0e1512">
+<title>Movimientos USDT</title>
+<link rel="manifest" href="movimientos.json">
+<link rel="icon" href="movimientos.png">
+<link rel="apple-touch-icon" href="movimientos.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Movimientos">
+<style>
+:root{
+  --bg:#0e1512; --card:#16201b; --fg:#e7efe9; --muted:#97a89f; --line:#2a3832;
+  --accent:#3cc48f; --accent-fg:#06281b; --soft:#1c2e25; --rojo:#ff6b5e; --rojobg:#2e1a18;
+  --warn:#f0b35a;
+  --num:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+.dos>*{min-width:0}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 var(--sans);
+  padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 40px max(16px,env(safe-area-inset-left))}
+main{max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+h1{font-size:1.25rem;margin:4px 0 0}
+h2{font-size:1rem;margin:0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px}
+label{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.dos{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.big{border:0;border-radius:14px;padding:18px 8px;font:700 1.05rem var(--sans);cursor:pointer;color:var(--fg);background:var(--soft);border:2px solid var(--line)}
+.big.on.sal{border-color:var(--rojo);background:var(--rojobg)}
+.big.on.ent{border-color:var(--accent);background:var(--soft)}
+.campo{display:flex;align-items:center;gap:8px;border:2px solid var(--line);border-radius:12px;padding:4px 12px;background:var(--bg)}
+.campo:focus-within{border-color:var(--accent)}
+.campo input{flex:1;min-width:0;border:0;background:transparent;color:var(--fg);font:600 1.3rem var(--num);padding:8px 0;outline:none}
+.campo input.txt{font:600 1.1rem var(--sans)}
+.campo span{color:var(--muted);font-weight:600}
+.calc{background:var(--soft);border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.calc b{font:700 1.2rem var(--num);color:var(--accent)}
+.btn{border:0;border-radius:12px;padding:14px;font:700 1rem var(--sans);cursor:pointer;background:var(--accent);color:var(--accent-fg)}
+.btn.sec{background:transparent;color:var(--accent);border:2px solid var(--accent);padding:10px}
+.btn.chico{padding:8px 12px;font-size:.9rem}
+.msg{white-space:pre-wrap;font:600 1.05rem/1.5 var(--sans);background:var(--bg);border:1px dashed var(--line);border-radius:12px;padding:12px 14px}
+.tot{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tot div{background:var(--soft);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.tot span{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.tot b{font:700 1rem var(--num);overflow-wrap:anywhere}
+.tot .e b{color:var(--accent)} .tot .s b{color:var(--rojo)}
+.fila{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.lista{display:flex;flex-direction:column;gap:8px}
+.mov{background:var(--bg);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.mov.s{border-left-color:var(--rojo)}
+.mov .txt{white-space:pre-wrap;font-size:.95rem}
+.mov .pie{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.8rem;color:var(--muted)}
+.mov .acc{display:flex;gap:6px}
+.mini{border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:8px;padding:5px 10px;font:600 .8rem var(--sans);cursor:pointer}
+.mini.borrar.conf{border-color:var(--rojo);color:var(--rojo)}
+.fch{font-size:.75rem;color:var(--muted);letter-spacing:.02em}
+.saldo .monto{font:700 2rem/1.1 var(--num);color:var(--accent);overflow-wrap:anywhere}
+.saldo .monto.neg{color:var(--rojo)}
+.mov.a{border-left-color:var(--warn)}
+.vacio{color:var(--muted);font-size:.92rem;text-align:center;padding:10px}
+input[type=date]{background:var(--bg);color:var(--fg);border:2px solid var(--line);border-radius:10px;padding:6px 10px;font:600 .95rem var(--sans)}
+.nota{font-size:.8rem;color:var(--muted)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Movimientos USDT</h1>
+
+  <div class="card saldo">
+    <div class="fch" id="saldoFecha"></div>
+    <label>Saldo actual</label>
+    <div class="monto" id="saldoMonto">0 USDT</div>
+    <div class="dos">
+      <button class="btn" id="saldoCompartir" type="button">Compartir saldo</button>
+      <button class="btn sec" id="saldoAjustar" type="button">Ajustar saldo</button>
+    </div>
+    <div id="ajuste" hidden>
+      <label for="ajMonto">Saldo real que tienes ahorita</label>
+      <div class="campo"><input id="ajMonto" inputmode="decimal" autocomplete="off" placeholder="0"><span>USDT</span></div>
+      <div class="nota" style="margin:6px 0">Escribe el saldo que ves en tu wallet. Desde ahí la app suma las compras y resta las salidas.</div>
+      <button class="btn" id="ajGuardar" type="button">Guardar saldo</button>
+    </div>
+  </div>
+
+  <div class="dos">
+    <button class="big sal on" id="bSal" type="button">⭕️ Salida</button>
+    <button class="big ent" id="bEnt" type="button">✅ Compra</button>
+  </div>
+
+  <!-- SALIDA -->
+  <div class="card" id="fSal">
+    <div><label for="sMonto">Cantidad (USDT)</label>
+      <div class="campo"><input id="sMonto" inputmode="decimal" autocomplete="off" placeholder="250,000"><span>USDT</span></div></div>
+    <div class="dos">
+      <div><label for="sPct">Porcentaje</label>
+        <div class="campo"><input id="sPct" inputmode="decimal" autocomplete="off" placeholder="5.5"><span>%</span></div></div>
+      <div><label for="sCli">Cliente</label>
+        <div class="campo"><input id="sCli" class="txt" list="clientes" autocomplete="off" placeholder="CEO MP"></div></div>
+    </div>
+    <datalist id="clientes"></datalist>
+    <div class="calc"><span>Le cobras</span><b id="sCobro">—</b></div>
+    <button class="btn" id="sGuardar" type="button">Guardar salida</button>
+  </div>
+
+  <!-- COMPRA -->
+  <div class="card" id="fEnt" hidden>
+    <div><label for="eProv">Proveedor</label>
+      <div class="campo"><input id="eProv" class="txt" list="proveedores" autocomplete="off" placeholder="Regio"></div></div>
+    <datalist id="proveedores"></datalist>
+    <div><label for="ePesos">Pesos que mandaste</label>
+      <div class="campo"><input id="ePesos" inputmode="decimal" autocomplete="off" placeholder="4,736,250"><span>MXN</span></div></div>
+    <div><label for="eTc">Tipo de cambio</label>
+      <div class="campo"><input id="eTc" inputmode="decimal" autocomplete="off" placeholder="18.945"><span>MXN</span></div></div>
+    <div class="calc"><span>Recibiste</span><b id="eUsdt">—</b></div>
+    <button class="btn" id="eGuardar" type="button">Guardar compra</button>
+  </div>
+
+  <!-- MENSAJE LISTO -->
+  <div class="card" id="listo" hidden>
+    <h2>Guardado ✔ Mensaje listo</h2>
+    <div><div class="fch" id="msgFecha"></div><div class="msg" id="msg"></div></div>
+    <div class="dos">
+      <button class="btn" id="compartir" type="button">Compartir</button>
+      <button class="btn sec" id="copiar" type="button">Copiar</button>
+    </div>
+  </div>
+
+  <!-- DIA -->
+  <div class="card">
+    <div class="fila"><h2 id="tituloDia">Hoy</h2><input type="date" id="dia" aria-label="Elegir día"></div>
+    <div class="tot">
+      <div class="e"><span>Entró</span><b id="tEnt">0</b></div>
+      <div class="s"><span>Salió</span><b id="tSal">0</b></div>
+      <div><span>Cobrado</span><b id="tCob">0</b></div>
+    </div>
+    <div class="nota" id="tPesos"></div>
+    <div class="lista" id="lista"></div>
+  </div>
+
+  <div class="card">
+    <h2>Respaldo</h2>
+    <div class="nota">Tus movimientos se guardan en este celular. Haz un respaldo de vez en cuando para no perderlos.</div>
+    <button class="btn sec" id="respaldo" type="button">Compartir respaldo (Excel)</button>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const LS = "movimientos_v1";
+function leer(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
+function escribir(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+let movs = leer(LS, []);
+let tipo = "s";
+
+const num = s => { const n = parseFloat(String(s).replace(/[^\d.]/g,"")); return isFinite(n) ? n : 0; };
+const fmt = (n,d=2) => n.toLocaleString("en-US",{minimumFractionDigits:0,maximumFractionDigits:d});
+const fmt2 = n => n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+const diaDe = t => { const d=new Date(t); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
+const hora = t => new Date(t).toLocaleTimeString("es-MX",{hour:"numeric",minute:"2-digit"});
+
+function conComas(inp, cb){
+  inp.addEventListener("input", ()=>{
+    const raw = inp.value.replace(/[^\d.]/g,"");
+    const [e,d] = raw.split(".");
+    const ent = e ? Number(e).toLocaleString("en-US") : "";
+    inp.value = d!==undefined ? ent + "." + d : ent;
+    cb && cb();
+  });
+}
+
+function ponTipo(t){
+  tipo = t;
+  $("bSal").classList.toggle("on", t==="s");
+  $("bEnt").classList.toggle("on", t==="e");
+  $("fSal").hidden = t!=="s";
+  $("fEnt").hidden = t!=="e";
+}
+
+function calcSal(){
+  const m = num($("sMonto").value), p = num($("sPct").value);
+  $("sCobro").textContent = (m && p) ? fmt(m*p/100) + " USDT" : "—";
+}
+function calcEnt(){
+  const pe = num($("ePesos").value), tc = num($("eTc").value);
+  $("eUsdt").textContent = (pe && tc) ? fmt2(pe/tc) + " USDT" : "—";
+}
+
+const fechaLarga = t => new Date(t).toLocaleDateString("es-MX",{weekday:"long",day:"numeric",month:"long",year:"numeric"}) + " · " + hora(t);
+function saldos(){
+  const orden = movs.slice().sort((a,b)=>a.f-b.f), mapa = {}; let sd = 0;
+  orden.forEach(m=>{ if(m.t==="a") sd = m.usdt; else if(m.t==="e") sd += m.usdt; else sd -= m.usdt; mapa[m.id] = Math.round(sd*100)/100; });
+  return {mapa, total: Math.round(sd*100)/100};
+}
+function textoSaldo(){ return "💰 Saldo wallet\n$" + fmt2(saldos().total) + " USDT\n" + fechaLarga(Date.now()); }
+function texto(m){
+  if(m.t==="a") return "⚖️ Ajuste de saldo\n$" + fmt2(m.usdt) + " USDT";
+  if(m.t==="s") return "⭕️ Salida wallet\n$" + fmt(m.usdt) + "\n+" + m.pct + "%\n" + m.cli;
+  return "✅ Compra moneda " + m.prov + "\n$" + fmt2(m.pesos) + " MXN\nTC " + m.tc + "\n" + fmt2(m.usdt) + " USDT";
+}
+
+function avisa(inp){ inp.parentNode.style.borderColor="var(--rojo)"; inp.focus(); setTimeout(()=>inp.parentNode.style.borderColor="",1500); }
+
+function guardar(m){
+  movs.push(m); escribir(LS, movs);
+  $("msg").textContent = texto(m);
+  $("msgFecha").textContent = fechaLarga(m.f);
+  $("listo").hidden = false;
+  $("dia").value = diaDe(m.f);
+  pinta();
+  $("listo").scrollIntoView({behavior:"smooth",block:"center"});
+}
+
+$("sGuardar").onclick = ()=>{
+  const usdt = num($("sMonto").value), pct = $("sPct").value.trim(), cli = $("sCli").value.trim();
+  if(!usdt) return avisa($("sMonto"));
+  if(!pct) return avisa($("sPct"));
+  if(!cli) return avisa($("sCli"));
+  const p = num(pct);
+  escribir("ultPct", pct);
+  guardar({id:Date.now(), f:Date.now(), t:"s", usdt, pct:p, cli, cobro: usdt*p/100});
+  $("sMonto").value=""; $("sCli").value=""; calcSal();
+};
+$("eGuardar").onclick = ()=>{
+  const prov = $("eProv").value.trim(), pesos = num($("ePesos").value), tcTxt = $("eTc").value.trim(), tc = num(tcTxt);
+  if(!prov) return avisa($("eProv"));
+  if(!pesos) return avisa($("ePesos"));
+  if(!tc || tc<5 || tc>50) return avisa($("eTc"));
+  escribir("ultProv", prov);
+  guardar({id:Date.now(), f:Date.now(), t:"e", prov, pesos, tc, usdt: Math.round(pesos/tc*100)/100});
+  $("ePesos").value=""; $("eTc").value=""; calcEnt();
+};
+
+async function compartirTexto(t, btn){
+  try{ if(navigator.share){ await navigator.share({text:t}); return; } }catch(e){ if(e && e.name==="AbortError") return; }
+  copiarTexto(t, btn);
+}
+async function copiarTexto(t, btn){
+  const orig = btn.textContent;
+  try{ await navigator.clipboard.writeText(t); btn.textContent="¡Copiado!"; }
+  catch(e){ btn.textContent="No se pudo copiar"; }
+  setTimeout(()=>btn.textContent=orig,1500);
+}
+$("compartir").onclick = ()=>compartirTexto($("msg").textContent, $("compartir"));
+$("copiar").onclick = ()=>copiarTexto($("msg").textContent, $("copiar"));
+
+function pinta(){
+  const d = $("dia").value || diaDe(Date.now());
+  const hoy = diaDe(Date.now());
+  $("tituloDia").textContent = d===hoy ? "Hoy" : new Date(d+"T12:00").toLocaleDateString("es-MX",{weekday:"long",day:"numeric",month:"long"});
+  const del = movs.filter(m=>diaDe(m.f)===d).sort((a,b)=>b.f-a.f);
+  let ent=0, sal=0, cob=0, pesos=0;
+  del.forEach(m=>{ if(m.t==="a") return; if(m.t==="e"){ ent+=m.usdt; pesos+=m.pesos; } else { sal+=m.usdt; cob+=m.cobro; } });
+  $("tEnt").textContent = fmt(ent); $("tSal").textContent = fmt(sal); $("tCob").textContent = fmt(cob);
+  $("tPesos").textContent = pesos ? "Pesos mandados en compras: $" + fmt2(pesos) + " MXN" : "";
+  const sd = saldos();
+  $("saldoMonto").textContent = fmt2(sd.total) + " USDT";
+  $("saldoMonto").classList.toggle("neg", sd.total < 0);
+  $("saldoFecha").textContent = fechaLarga(Date.now());
+  const L = $("lista"); L.innerHTML = "";
+  if(!del.length){ L.innerHTML = '<div class="vacio">Sin movimientos este día. Usa ⭕️ Salida o ✅ Compra para anotar el primero.</div>'; }
+  del.forEach(m=>{
+    const el = document.createElement("div"); el.className = "mov " + m.t;
+    const fc = document.createElement("div"); fc.className="fch"; fc.textContent = fechaLarga(m.f);
+    const tx = document.createElement("div"); tx.className="txt"; tx.textContent = texto(m);
+    const pie = document.createElement("div"); pie.className="pie";
+    const h = document.createElement("span"); h.textContent = (m.t==="s" ? "Cobro " + fmt(m.cobro) + " USDT · " : "") + "Saldo: " + fmt2(sd.mapa[m.id]) + " USDT";
+    const acc = document.createElement("div"); acc.className="acc";
+    const bc = document.createElement("button"); bc.className="mini"; bc.type="button"; bc.textContent="Compartir";
+    bc.onclick = ()=>compartirTexto(texto(m), bc);
+    const bb = document.createElement("button"); bb.className="mini borrar"; bb.type="button"; bb.textContent="Borrar";
+    bb.onclick = ()=>{
+      if(!bb.classList.contains("conf")){ bb.classList.add("conf"); bb.textContent="¿Borrar?"; setTimeout(()=>{bb.classList.remove("conf");bb.textContent="Borrar";},3000); return; }
+      movs = movs.filter(x=>x.id!==m.id); escribir(LS, movs); pinta();
+    };
+    acc.append(bc, bb); pie.append(h, acc); el.append(fc, tx, pie); L.append(el);
+  });
+  const clis = [...new Set(movs.filter(m=>m.t==="s").map(m=>m.cli))];
+  $("clientes").innerHTML = clis.map(c=>'<option value="'+c.replace(/"/g,"&quot;")+'">').join("");
+  const provs = [...new Set(movs.filter(m=>m.t==="e").map(m=>m.prov))];
+  $("proveedores").innerHTML = provs.map(c=>'<option value="'+c.replace(/"/g,"&quot;")+'">').join("");
+}
+
+$("respaldo").onclick = async ()=>{
+  const sdR = saldos().mapa;
+  const filas = [["Fecha","Hora","Tipo","Cliente/Proveedor","USDT","Porcentaje","Cobro USDT","Pesos","Tipo de cambio","Saldo USDT"]];
+  movs.slice().sort((a,b)=>a.f-b.f).forEach(m=>{
+    const d = new Date(m.f);
+    filas.push([d.toLocaleDateString("es-MX"), hora(m.f), m.t==="s"?"Salida":m.t==="e"?"Compra":"Ajuste de saldo", m.t==="s"?m.cli:m.t==="e"?m.prov:"", m.usdt, m.t==="s"?m.pct:"", m.t==="s"?m.cobro:"", m.t==="e"?m.pesos:"", m.t==="e"?m.tc:"", sdR[m.id]]);
+  });
+  const csv = "﻿" + filas.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(",")).join("\n");
+  const nombre = "movimientos-" + diaDe(Date.now()) + ".csv";
+  const file = new File([csv], nombre, {type:"text/csv"});
+  try{
+    if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file]}); return; }
+  }catch(e){ if(e && e.name==="AbortError") return; }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(file); a.download = nombre; a.click();
+};
+
+$("saldoCompartir").onclick = ()=>compartirTexto(textoSaldo(), $("saldoCompartir"));
+$("saldoAjustar").onclick = ()=>{ $("ajuste").hidden = !$("ajuste").hidden; if(!$("ajuste").hidden){ $("ajMonto").value = fmt(saldos().total); $("ajMonto").focus(); } };
+$("ajGuardar").onclick = ()=>{
+  const v = num($("ajMonto").value);
+  if($("ajMonto").value.trim()==="") return avisa($("ajMonto"));
+  movs.push({id:Date.now(), f:Date.now(), t:"a", usdt:v}); escribir(LS, movs);
+  $("ajuste").hidden = true; pinta();
+};
+conComas($("ajMonto"));
+setInterval(()=>{ $("saldoFecha").textContent = fechaLarga(Date.now()); }, 30000);
+$("bSal").onclick = ()=>ponTipo("s");
+$("bEnt").onclick = ()=>ponTipo("e");
+conComas($("sMonto"), calcSal);
+conComas($("ePesos"), calcEnt);
+$("sPct").addEventListener("input", calcSal);
+$("eTc").addEventListener("input", calcEnt);
+$("dia").addEventListener("change", pinta);
+$("sPct").value = leer("ultPct", "");
+$("eProv").value = leer("ultProv", "Regio");
+$("dia").value = diaDe(Date.now());
+pinta();
+</script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+{
+ "id": "movimientos",
+ "name": "Movimientos USDT",
+ "short_name": "Movimientos",
+ "start_url": "movimientos.html",
+ "scope": "movimientos.html",
+ "display": "standalone",
+ "background_color": "#0e1512",
+ "theme_color": "#0e1512",
+ "icons": [
+  {
+   "src": "movimientos.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "movimientos.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "maskable"
+  }
+ ]
+}
