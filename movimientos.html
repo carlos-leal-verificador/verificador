@@ -99,7 +99,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
     <div><label for="sMonto">Cantidad (USDT)</label>
       <div class="campo"><input id="sMonto" inputmode="decimal" autocomplete="off" placeholder="250,000"><span>USDT</span></div></div>
     <div class="dos">
-      <div><label for="sPct">Porcentaje</label>
+      <div><label for="sPct">Porcentaje (opcional)</label>
         <div class="campo"><input id="sPct" inputmode="decimal" autocomplete="off" placeholder="5.5"><span>%</span></div></div>
       <div><label for="sCli">Cliente</label>
         <div class="campo"><input id="sCli" class="txt" list="clientes" autocomplete="off" placeholder="CEO MP"></div></div>
@@ -124,7 +124,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
 
   <!-- MENSAJE LISTO -->
   <div class="card" id="listo" hidden>
-    <h2>Guardado ✔ Mensaje listo</h2>
+    <div class="fila"><h2>Guardado ✔ Mensaje listo</h2><button class="mini" id="cerrarListo" type="button">Cerrar ✕</button></div>
     <div><div class="fch" id="msgFecha"></div><div class="msg" id="msg"></div></div>
     <div class="dos">
       <button class="btn" id="compartir" type="button">Compartir</button>
@@ -158,6 +158,7 @@ function leer(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.par
 function escribir(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
 let movs = leer(LS, []);
 let tipo = "s";
+let ultimoId = null;
 
 const num = s => { const n = parseFloat(String(s).replace(/[^\d.]/g,"")); return isFinite(n) ? n : 0; };
 const fmt = (n,d=2) => n.toLocaleString("en-US",{minimumFractionDigits:0,maximumFractionDigits:d});
@@ -185,7 +186,7 @@ function ponTipo(t){
 
 function calcSal(){
   const m = num($("sMonto").value), p = num($("sPct").value);
-  $("sCobro").textContent = (m && p) ? fmt(m*p/100) + " USDT" : "—";
+  $("sCobro").textContent = (m && p) ? fmt(m*p/100) + " USDT" : (m ? "Sin porcentaje" : "—");
 }
 function calcEnt(){
   const pe = num($("ePesos").value), tc = num($("eTc").value);
@@ -200,8 +201,8 @@ function saldos(){
 }
 function textoSaldo(){ return "💰 Saldo wallet\n$" + fmt2(saldos().total) + " USDT\n" + fechaLarga(Date.now()); }
 function texto(m){
-  if(m.t==="a") return "⚖️ Ajuste de saldo\n$" + fmt2(m.usdt) + " USDT";
-  if(m.t==="s") return "⭕️ Salida wallet\n$" + fmt(m.usdt) + "\n+" + m.pct + "%\n" + m.cli;
+  if(m.t==="a") return "⚖️ Saldo inicial\n$" + fmt2(m.usdt) + " USDT";
+  if(m.t==="s") return "⭕️ Salida wallet\n$" + fmt(m.usdt) + (m.pct ? "\n+" + m.pct + "%" : "") + "\n" + m.cli;
   return "✅ Compra moneda " + m.prov + "\n$" + fmt2(m.pesos) + " MXN\nTC " + m.tc + "\n" + fmt2(m.usdt) + " USDT";
 }
 
@@ -209,6 +210,7 @@ function avisa(inp){ inp.parentNode.style.borderColor="var(--rojo)"; inp.focus()
 
 function guardar(m){
   movs.push(m); escribir(LS, movs);
+  ultimoId = m.id;
   $("msg").textContent = texto(m);
   $("msgFecha").textContent = fechaLarga(m.f);
   $("listo").hidden = false;
@@ -220,10 +222,9 @@ function guardar(m){
 $("sGuardar").onclick = ()=>{
   const usdt = num($("sMonto").value), pct = $("sPct").value.trim(), cli = $("sCli").value.trim();
   if(!usdt) return avisa($("sMonto"));
-  if(!pct) return avisa($("sPct"));
   if(!cli) return avisa($("sCli"));
   const p = num(pct);
-  escribir("ultPct", pct);
+  if(pct) escribir("ultPct", pct);
   guardar({id:Date.now(), f:Date.now(), t:"s", usdt, pct:p, cli, cobro: usdt*p/100});
   $("sMonto").value=""; $("sCli").value=""; calcSal();
 };
@@ -270,14 +271,16 @@ function pinta(){
     const fc = document.createElement("div"); fc.className="fch"; fc.textContent = fechaLarga(m.f);
     const tx = document.createElement("div"); tx.className="txt"; tx.textContent = texto(m);
     const pie = document.createElement("div"); pie.className="pie";
-    const h = document.createElement("span"); h.textContent = (m.t==="s" ? "Cobro " + fmt(m.cobro) + " USDT · " : "") + "Saldo: " + fmt2(sd.mapa[m.id]) + " USDT";
+    const h = document.createElement("span"); h.textContent = (m.t==="s" && m.cobro ? "Cobro " + fmt(m.cobro) + " USDT · " : "") + "Saldo: " + fmt2(sd.mapa[m.id]) + " USDT";
     const acc = document.createElement("div"); acc.className="acc";
     const bc = document.createElement("button"); bc.className="mini"; bc.type="button"; bc.textContent="Compartir";
     bc.onclick = ()=>compartirTexto(texto(m), bc);
     const bb = document.createElement("button"); bb.className="mini borrar"; bb.type="button"; bb.textContent="Borrar";
     bb.onclick = ()=>{
       if(!bb.classList.contains("conf")){ bb.classList.add("conf"); bb.textContent="¿Borrar?"; setTimeout(()=>{bb.classList.remove("conf");bb.textContent="Borrar";},3000); return; }
-      movs = movs.filter(x=>x.id!==m.id); escribir(LS, movs); pinta();
+      movs = movs.filter(x=>x.id!==m.id); escribir(LS, movs);
+      if(m.id===ultimoId){ $("listo").hidden = true; ultimoId = null; }
+      pinta();
     };
     acc.append(bc, bb); pie.append(h, acc); el.append(fc, tx, pie); L.append(el);
   });
@@ -292,7 +295,7 @@ $("respaldo").onclick = async ()=>{
   const filas = [["Fecha","Hora","Tipo","Cliente/Proveedor","USDT","Porcentaje","Cobro USDT","Pesos","Tipo de cambio","Saldo USDT"]];
   movs.slice().sort((a,b)=>a.f-b.f).forEach(m=>{
     const d = new Date(m.f);
-    filas.push([d.toLocaleDateString("es-MX"), hora(m.f), m.t==="s"?"Salida":m.t==="e"?"Compra":"Ajuste de saldo", m.t==="s"?m.cli:m.t==="e"?m.prov:"", m.usdt, m.t==="s"?m.pct:"", m.t==="s"?m.cobro:"", m.t==="e"?m.pesos:"", m.t==="e"?m.tc:"", sdR[m.id]]);
+    filas.push([d.toLocaleDateString("es-MX"), hora(m.f), m.t==="s"?"Salida":m.t==="e"?"Compra":"Ajuste de saldo", m.t==="s"?m.cli:m.t==="e"?m.prov:"", m.usdt, m.t==="s"&&m.pct?m.pct:"", m.t==="s"&&m.cobro?m.cobro:"", m.t==="e"?m.pesos:"", m.t==="e"?m.tc:"", sdR[m.id]]);
   });
   const csv = "﻿" + filas.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(",")).join("\n");
   const nombre = "movimientos-" + diaDe(Date.now()) + ".csv";
@@ -303,6 +306,7 @@ $("respaldo").onclick = async ()=>{
   const a = document.createElement("a"); a.href = URL.createObjectURL(file); a.download = nombre; a.click();
 };
 
+$("cerrarListo").onclick = ()=>{ $("listo").hidden = true; };
 $("saldoCompartir").onclick = ()=>compartirTexto(textoSaldo(), $("saldoCompartir"));
 $("saldoAjustar").onclick = ()=>{ $("ajuste").hidden = !$("ajuste").hidden; if(!$("ajuste").hidden){ $("ajMonto").value = fmt(saldos().total); $("ajMonto").focus(); } };
 $("ajGuardar").onclick = ()=>{
