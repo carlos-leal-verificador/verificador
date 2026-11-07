@@ -66,6 +66,20 @@ label{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacin
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:-4px}
 .chip{border:2px solid var(--line);background:var(--bg);color:var(--fg);border-radius:999px;padding:8px 18px;font:700 .95rem var(--sans);cursor:pointer}
 .chip.on{border-color:var(--accent);background:var(--soft);color:var(--accent)}
+.semana,.dias{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.semana span{text-align:center;font-size:.72rem;color:var(--muted);font-weight:700}
+.dia{border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:10px;padding:6px 2px;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:2px;cursor:pointer;min-width:0;font:inherit}
+.dia .n{font-weight:700;font-size:.92rem}
+.dia .sd{font:600 .62rem var(--num);color:var(--muted);white-space:nowrap;overflow:hidden;max-width:100%}
+.dia.mov .n::after{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-left:3px;vertical-align:middle}
+.dia.hoy{border-color:var(--muted)}
+.dia.sel{border-color:var(--accent);background:var(--soft)}
+.dia.vacio{visibility:hidden}
+.dia.fut{opacity:.35;cursor:default}
+.aper{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.aper div{background:var(--soft);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.aper span{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.aper b{font:700 1rem var(--num);overflow-wrap:anywhere}
 .vacio{color:var(--muted);font-size:.92rem;text-align:center;padding:10px}
 input[type=date]{background:var(--bg);color:var(--fg);border:2px solid var(--line);border-radius:10px;padding:6px 10px;font:600 .95rem var(--sans)}
 .nota{font-size:.8rem;color:var(--muted)}
@@ -141,9 +155,25 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
     </div>
   </div>
 
+  <!-- CALENDARIO -->
+  <div class="card cal">
+    <div class="fila">
+      <button class="mini" id="mesAnt" type="button" aria-label="Mes anterior">◀</button>
+      <h2 id="mesTit"></h2>
+      <button class="mini" id="mesSig" type="button" aria-label="Mes siguiente">▶</button>
+    </div>
+    <div class="semana"><span>L</span><span>M</span><span>M</span><span>J</span><span>V</span><span>S</span><span>D</span></div>
+    <div class="dias" id="dias"></div>
+    <div class="nota">Toca un día para ver sus movimientos. Abajo de cada día sale con cuánto saldo cerró.</div>
+  </div>
+
   <!-- DIA -->
   <div class="card">
-    <div class="fila"><h2 id="tituloDia">Hoy</h2><input type="date" id="dia" aria-label="Elegir día"></div>
+    <div class="fila"><h2 id="tituloDia">Hoy</h2><button class="mini" id="irHoy" type="button">Ir a hoy</button><input type="hidden" id="dia"></div>
+    <div class="aper">
+      <div><span>Saldo al iniciar</span><b id="sIni">—</b></div>
+      <div><span>Saldo al cerrar</span><b id="sFin">—</b></div>
+    </div>
     <div class="tot">
       <div class="e"><span>Entró</span><b id="tEnt">0</b></div>
       <div class="s"><span>Salió</span><b id="tSal">0</b></div>
@@ -261,10 +291,50 @@ async function copiarTexto(t, btn){
 $("compartir").onclick = ()=>compartirTexto($("msg").textContent, $("compartir"));
 $("copiar").onclick = ()=>copiarTexto($("msg").textContent, $("copiar"));
 
+let mesVista = null;
+function saldoAl(fin){ // saldo con todo lo ocurrido antes de 'fin' (ms)
+  const orden = movs.filter(m=>m.f<fin).sort((a,b)=>a.f-b.f); let sd=0, hay=false;
+  orden.forEach(m=>{ hay=true; if(m.t==="a") sd=m.usdt; else if(m.t==="e") sd+=m.usdt; else sd-=m.usdt; });
+  return hay ? Math.round(sd*100)/100 : null;
+}
+const inicioDia = d => new Date(d+"T00:00:00").getTime();
+const corto = v => { const a=Math.abs(v); const s = a>=1e6 ? (a/1e6).toFixed(a>=1e7?0:1)+"M" : a>=1e3 ? (a/1e3).toFixed(a>=1e5?0:1)+"k" : a.toFixed(0); return (v<0?"-":"")+s.replace(".0",""); };
+function pintaCal(){
+  const sel = $("dia").value || diaDe(Date.now());
+  if(!mesVista) mesVista = sel.slice(0,7);
+  const [y,mo] = mesVista.split("-").map(Number);
+  $("mesTit").textContent = new Date(y,mo-1,15).toLocaleDateString("es-MX",{month:"long",year:"numeric"});
+  const prim = new Date(y,mo-1,1), dias = new Date(y,mo,0).getDate();
+  const huecos = (prim.getDay()+6)%7, hoy = diaDe(Date.now());
+  const conMov = new Set(movs.map(m=>diaDe(m.f)));
+  const C = $("dias"); C.innerHTML = "";
+  for(let i=0;i<huecos;i++){ const b=document.createElement("div"); b.className="dia vacio"; C.append(b); }
+  for(let n=1;n<=dias;n++){
+    const d = y+"-"+String(mo).padStart(2,"0")+"-"+String(n).padStart(2,"0");
+    const b = document.createElement("button"); b.type="button"; b.className="dia";
+    const fut = d > hoy;
+    if(fut) b.classList.add("fut");
+    if(d===hoy) b.classList.add("hoy");
+    if(d===sel) b.classList.add("sel");
+    if(conMov.has(d)) b.classList.add("mov");
+    const nn = document.createElement("span"); nn.className="n"; nn.textContent = n;
+    const sd = document.createElement("span"); sd.className="sd";
+    if(!fut){ const v = saldoAl(inicioDia(d)+864e5); if(v!==null) sd.textContent = corto(v); }
+    b.append(nn, sd);
+    if(!fut) b.onclick = ()=>{ $("dia").value = d; pinta(); };
+    C.append(b);
+  }
+}
 function pinta(){
   const d = $("dia").value || diaDe(Date.now());
   const hoy = diaDe(Date.now());
-  $("tituloDia").textContent = d===hoy ? "Hoy" : new Date(d+"T12:00").toLocaleDateString("es-MX",{weekday:"long",day:"numeric",month:"long"});
+  $("tituloDia").textContent = d===hoy ? "Hoy" : new Date(d+"T12:00").toLocaleDateString("es-MX",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+  $("irHoy").hidden = d===hoy;
+  const vi = saldoAl(inicioDia(d)), vf = saldoAl(inicioDia(d)+864e5);
+  $("sIni").textContent = vi===null ? "—" : fmt2(vi) + " USDT";
+  $("sFin").textContent = vf===null ? "—" : fmt2(vf) + " USDT";
+  if(d.slice(0,7)!==mesVista) mesVista = d.slice(0,7);
+  pintaCal();
   const del = movs.filter(m=>diaDe(m.f)===d).sort((a,b)=>b.f-a.f);
   let ent=0, sal=0, cob=0, pesos=0;
   del.forEach(m=>{ if(m.t==="a") return; if(m.t==="e"){ ent+=m.usdt; pesos+=m.pesos; } else { sal+=m.usdt; cob+=m.cobro; } });
@@ -337,7 +407,10 @@ conComas($("ePesos"), calcEnt);
 conComas($("eUsdt"));
 $("sPct").addEventListener("input", calcSal);
 $("eTc").addEventListener("input", calcEnt);
-$("dia").addEventListener("change", pinta);
+$("irHoy").onclick = ()=>{ $("dia").value = diaDe(Date.now()); pinta(); };
+function moverMes(k){ const [y,mo]=mesVista.split("-").map(Number); const t=new Date(y,mo-1+k,1); mesVista=t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0"); pintaCal(); }
+$("mesAnt").onclick = ()=>moverMes(-1);
+$("mesSig").onclick = ()=>moverMes(1);
 $("sPct").value = leer("ultPct", "");
 $("eProv").value = leer("ultProv", "Regio");
 $("dia").value = diaDe(Date.now());
