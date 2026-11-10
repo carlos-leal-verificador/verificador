@@ -113,6 +113,16 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
     <label for="pct">Comisión del proveedor</label>
     <div class="campo small"><input id="pct" inputmode="decimal" autocomplete="off" value="0.5"><span>%</span></div>
   </div>
+
+  <div class="card">
+    <label for="tdKey">Clave de Twelve Data (gráfica como XE)</label>
+    <div class="campo small"><input id="tdKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Pega aquí tu clave"></div>
+    <div class="filaxe">
+      <button class="btn" id="tdGuardar" type="button" style="flex:1">Guardar clave</button>
+      <button class="btn sec" id="tdQuitar" type="button">Quitar</button>
+    </div>
+    <div class="fuente" id="tdEstado"></div>
+  </div>
 </main>
 
 <script>
@@ -173,7 +183,12 @@ async function traer(url, sacar){
 }
 
 async function actualizar(){
-  $("fuente").textContent = "Buscando precio…";
+  xeManual = false;
+  $("fuente").style.color=""; $("fuente").textContent = "Buscando precio…";
+  if(leerKey()) return; // con clave, el precio lo pone la gráfica (como XE)
+  return actualizarCoinbase();
+}
+async function actualizarCoinbase(){
   const fuentes = [
     ["Coinbase (precio de mercado)", "https://api.coinbase.com/v2/exchange-rates?currency=USD", j=>parseFloat(j.data.rates.MXN)],
     ["ExchangeRate-API (se actualiza 1 vez al día)", "https://open.er-api.com/v6/latest/USD", j=>parseFloat(j.rates.MXN)]
@@ -276,6 +291,24 @@ function soltar(){
   sv.addEventListener("pointermove", e=>{ if(e.pointerType!=="mouse" && !e.buttons && e.pressure===0) return; tocar(e); });
   ["pointerup","pointercancel","pointerleave"].forEach(t=>sv.addEventListener(t, soltar));
 })();
+function leerKey(){ try{ return (localStorage.getItem("tdKey")||"").trim(); }catch(e){ return ""; } }
+let xeManual = false, ultimaCarga = 0;
+async function datosTD(key){
+  const url = "https://api.twelvedata.com/time_series?symbol=USD/MXN&interval=5min&outputsize=288&timezone=UTC&apikey=" + encodeURIComponent(key);
+  const c = new AbortController(); const t = setTimeout(()=>c.abort(), 10000);
+  let j; try{ const r = await fetch(url,{signal:c.signal,cache:"no-store"}); j = await r.json(); } finally{ clearTimeout(t); }
+  if(!j || j.status==="error" || !Array.isArray(j.values)){
+    const code = j && j.code;
+    const msg = code===401 ? "La clave no es válida. Revisa que la copiaste completa."
+              : code===429 ? "Se acabaron las consultas gratis de hoy. Mañana se renuevan."
+              : "Twelve Data no respondió (" + ((j && j.message) || "sin datos") + ").";
+    const e = new Error(msg); e.td = true; throw e;
+  }
+  const pts = j.values.map(x=>({t:Date.parse(x.datetime.replace(" ","T")+"Z"), v:parseFloat(x.close)}))
+    .filter(x=>isFinite(x.t) && x.v>5 && x.v<50).sort((a,b)=>a.t-b.t);
+  if(pts.length < 10) { const e = new Error("Twelve Data mandó muy pocos datos."); e.td = true; throw e; }
+  return {tit:"Dólar últimas 24 h", fuente:"USD/MXN (como XE)", pts, hora:true, td:true};
+}
 async function datosHoy(){
   const j = await traer("https://api.coingecko.com/api/v3/coins/tether/market_chart?vs_currency=mxn&days=1", j=>j);
   const p = (j.prices||[]).filter(x=>x[1]>5 && x[1]<50);
@@ -290,8 +323,14 @@ async function datosMes(){
   return {tit:"Dólar últimos 30 días", fuente:"Banco Central Europeo", pts, hora:false};
 }
 async function cargarGrafica(){
-  let d=null;
-  try{ d = await datosHoy(); }catch(e){ try{ d = await datosMes(); }catch(_){} }
+  ultimaCarga = Date.now();
+  let d=null; const key = leerKey();
+  if(key){
+    try{ d = await datosTD(key); $("tdEstado").textContent = "✅ Conectado. Gráfica con el precio del dólar (como XE)."; $("tdEstado").style.color="var(--accent)"; }
+    catch(e){ $("tdEstado").textContent = "⚠️ " + (e.td ? e.message : "No se pudo conectar con Twelve Data.") + " Mientras, la gráfica muestra el USDT."; $("tdEstado").style.color="var(--warn)";
+      if(!xeManual) actualizarCoinbase(); }
+  }
+  if(!d){ try{ d = await datosHoy(); }catch(e){ try{ d = await datosMes(); }catch(_){} } }
   if(!d){ $("grafica").hidden = true; return; }
   let pts = d.pts;
   if(pts.length > 400){ const k = Math.ceil(pts.length/400); pts = pts.filter((_,i)=>i%k===0 || i===d.pts.length-1); }
@@ -320,7 +359,16 @@ async function cargarGrafica(){
   } else { $("gHoraLbl").parentNode.hidden = true; }
   $("gFin").textContent = "Ahora · " + new Date().toLocaleTimeString("es-MX",{hour:"numeric",minute:"2-digit"});
   const f = t => d.hora ? new Date(t).toLocaleTimeString("es-MX",{hour:"numeric",minute:"2-digit"}) : new Date(t).toLocaleDateString("es-MX",{day:"numeric",month:"short"});
-  $("gIni").textContent = d.hora ? "Hace 24 h" : f(pts[0].t);
+  $("gIni").textContent = d.td ? cuando(pts[0].t) : d.hora ? "Hace 24 h" : f(pts[0].t);
+  if(d.td){
+    const lastT = pts[pts.length-1].t;
+    $("gFin").textContent = (Date.now()-lastT < 30*60e3 ? "Ahora · " : "Último · ") + cuando(lastT);
+    if(!xeManual){
+      $("xe").value = String(ult);
+      $("fuente").style.color=""; $("fuente").textContent = "Precio USD/MXN (como XE) · " + cuando(lastT) + " · Antes de mandar, pega el XE real.";
+      calcular();
+    }
+  }
   $("gMaxMin").textContent = "Máx " + mx.toFixed(3) + " · Mín " + mn.toFixed(3);
   $("grafica").hidden = false;
 }
@@ -333,13 +381,14 @@ ponFecha(); setInterval(ponFecha, 20000);
 $("tUsd").onclick = ()=>ponModo("usd");
 $("tMxn").onclick = ()=>ponModo("mxn");
 conComas($("monto"));
-$("xe").addEventListener("input", ()=>{ $("fuente").textContent = "Precio escrito a mano."; $("fuente").style.color=""; calcular(); });
+$("xe").addEventListener("input", ()=>{ xeManual = true; $("fuente").textContent = "Precio escrito a mano."; $("fuente").style.color=""; calcular(); });
 function sacaXe(txt){
   const m = String(txt||"").replace(/\s/g," ").match(/\d{1,2}[.,]\d{2,6}/g) || [];
   for(const x of m){ const v = parseFloat(x.replace(",", ".")); if(v > 5 && v < 50) return v; }
   return null;
 }
 function ponXePegado(v){
+  xeManual = true;
   $("xe").value = String(v);
   const h = new Date().toLocaleTimeString("es-MX",{hour:"numeric",minute:"2-digit"});
   $("fuente").textContent = "✅ Pegado de XE a las " + h;
@@ -377,7 +426,24 @@ try{ const p = localStorage.getItem("pct"); if(p) $("pct").value = p; }catch(e){
 actualizar();
 cargarGrafica();
 setInterval(()=>{ if(!document.hidden && !gTocando) cargarGrafica(); }, 5*60*1000);
-document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && !gTocando) cargarGrafica(); });
+document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && !gTocando && Date.now()-ultimaCarga > 4*60e3) cargarGrafica(); });
+(function(){
+  const k = leerKey();
+  if(k){ $("tdKey").value = k; $("tdEstado").textContent = "Conectando…"; }
+  else { $("tdEstado").textContent = "Sin clave: la gráfica muestra el USDT."; }
+  $("tdGuardar").onclick = ()=>{
+    const v = $("tdKey").value.trim();
+    if(!v){ $("tdEstado").textContent = "Pega tu clave primero."; $("tdEstado").style.color="var(--warn)"; return; }
+    try{ localStorage.setItem("tdKey", v); }catch(e){}
+    $("tdEstado").textContent = "Probando la clave…"; $("tdEstado").style.color="";
+    xeManual = false; cargarGrafica();
+  };
+  $("tdQuitar").onclick = ()=>{
+    try{ localStorage.removeItem("tdKey"); }catch(e){}
+    $("tdKey").value = ""; $("tdEstado").textContent = "Clave quitada. La gráfica muestra el USDT."; $("tdEstado").style.color="";
+    xeManual = false; actualizarCoinbase(); cargarGrafica();
+  };
+})();
 </script>
 </body>
 </html>
