@@ -49,6 +49,11 @@ main{padding-block:14px 48px}
 .acc{display:flex;gap:8px;justify-content:center;padding:18px 20px 20px;flex-wrap:wrap}
 .btn{border:1px solid var(--l);background:var(--card);color:var(--t);border-radius:10px;padding:11px 16px;font:500 15px/1 inherit;cursor:pointer}
 .btn.pri{background:var(--acc);border-color:var(--acc);color:var(--card)}
+.regsal{margin:0 20px 20px;border:1px solid var(--l);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--soft)}
+.regsal label{font-size:12px;color:var(--g);text-transform:uppercase;letter-spacing:.04em}
+.regsal .dos{display:grid;grid-template-columns:1fr 1fr;gap:10px}.regsal .dos>*{min-width:0}
+.regsal .cobro{display:flex;justify-content:space-between;font-size:14px;color:var(--g)}.regsal .cobro b{color:var(--t)}
+.regsal .bts{display:flex;gap:8px}.regsal .bts .btn{flex:1}
 .det{border-top:1px solid var(--l);padding:0 20px}
 .det summary{list-style:none;cursor:pointer;color:var(--g);font-size:14px;padding:14px 0;text-align:center}
 .det summary::-webkit-details-marker{display:none}
@@ -510,6 +515,7 @@ function pintar(box,r,acciones){
   if(acciones){const a=el("div",{className:"acc"});
     if(e.c!=="sev")a.append(el("button",{className:"btn pri",textContent:"Copiar dirección",onclick:async()=>{try{await navigator.clipboard.writeText(r.direccion);toast("Dirección copiada");}catch(_){toast("No se pudo copiar");}}}));
     a.append(el("button",{className:"btn",textContent:"Comprobante",onclick:async ev=>{const b=ev.currentTarget;b.disabled=true;try{await compartirComprobante(r,firma());}catch(_){toast("No se pudo crear el comprobante");}finally{b.disabled=false;}}}));
+    if(r.resultado==="LIMPIA")a.append(el("button",{className:"btn pri",textContent:"⭕️ Registrar salida",onclick:()=>abrirSalida(box,r)}));
     a.append(el("button",{className:"btn",textContent:"Nueva revisión",onclick:()=>{$("dir").value="";$("cli").value="";ultima="";box.hidden=true;estado();$("dir").focus();}}));
     kids.push(a);}else kids.push(el("div",{className:"acc"},el("button",{className:"btn",textContent:"Comprobante",onclick:async ev=>{const b=ev.currentTarget;b.disabled=true;try{await compartirComprobante(r,firma());}catch(_){toast("No se pudo crear el comprobante");}finally{b.disabled=false;}}})));
   const filas=[["Revisado",new Date(r.fecha).toLocaleString("es-MX",{dateStyle:"medium",timeStyle:"short"})+` · ${r.segundos} s`]];
@@ -523,6 +529,39 @@ function pintar(box,r,acciones){
   if(r.mt&&r.mt.reporte&&/^https:\/\//.test(r.mt.reporte))cont.append(el("div",{className:"fila"},[el("span",{textContent:"Reporte profesional"}),el("a",{textContent:"Abrir PDF de MistTrack",href:r.mt.reporte,target:"_blank",rel:"noopener",className:"enlace"})]));
   kids.push(el("details",{className:"det"},[el("summary",{textContent:"Ver detalles"}),cont]));
   box.replaceChildren(...kids);box.hidden=false;
+}
+
+/* ===== registrar salida en Movimientos (misma app) ===== */
+function abrirSalida(box,r){
+  const ya=box.querySelector(".regsal");if(ya){ya.remove();return;}
+  const num=s=>{const n=parseFloat(String(s).replace(/[^\d.]/g,""));return isFinite(n)?n:0;};
+  const fmt=n=>n.toLocaleString("en-US",{maximumFractionDigits:2});
+  const iMonto=el("input",{className:"campo",inputMode:"decimal",autocomplete:"off",placeholder:"250,000"});
+  const iPct=el("input",{className:"campo",inputMode:"decimal",autocomplete:"off",placeholder:"5.5",value:String(LS.get("ultPct","")||"")});
+  const iCli=el("input",{className:"campo",type:"text",autocomplete:"off",placeholder:"Nombre del cliente",value:r.cliente||""});
+  const cob=el("b",{textContent:"—"});
+  const calc=()=>{const m=num(iMonto.value),p=num(iPct.value);cob.textContent=m&&p?fmt(m*p/100)+" USDT":(m?"Sin porcentaje":"—");};
+  iMonto.addEventListener("input",()=>{const raw=iMonto.value.replace(/[^\d.]/g,"");const [e,d]=raw.split(".");const ent=e?Number(e).toLocaleString("en-US"):"";iMonto.value=d!==undefined?ent+"."+d:ent;calc();});
+  iPct.addEventListener("input",calc);
+  const marca=inp=>{inp.style.borderColor="var(--sev)";inp.focus();setTimeout(()=>inp.style.borderColor="",1500);};
+  const guardar=el("button",{className:"btn pri",type:"button",textContent:"Guardar salida",onclick:()=>{
+    const usdt=num(iMonto.value),pctTxt=iPct.value.trim(),p=num(pctTxt),cli=iCli.value.trim();
+    if(!usdt)return marca(iMonto);if(!cli)return marca(iCli);
+    const movs=LS.get("movimientos_v1",[]);
+    movs.push({id:Date.now(),f:Date.now(),t:"s",usdt,pct:p,cli,cobro:usdt*p/100,wallet:r.direccion,verificada:true,origen:"rev"});
+    LS.set("movimientos_v1",movs);if(pctTxt)LS.set("ultPct",pctTxt);
+    caja.replaceChildren(el("div",{textContent:"✔ Salida registrada: "+fmt(usdt)+" USDT a "+cli+". Ya está en Movimientos.",style:"color:var(--ok);font-weight:600"}));
+    toast("Salida registrada");
+    if(window.parent!==window){try{window.parent.postMessage({ir:"mov"},location.origin);}catch(_){}}
+  }});
+  const caja=el("div",{className:"regsal"},[
+    el("div",{textContent:"⭕️ Registrar salida a esta wallet",style:"font-weight:600"}),
+    el("div",{},[el("label",{textContent:"Cantidad (USDT)"}),iMonto]),
+    el("div",{className:"dos"},[el("div",{},[el("label",{textContent:"Porcentaje (opcional)"}),iPct]),el("div",{},[el("label",{textContent:"Cliente"}),iCli])]),
+    el("div",{className:"cobro"},[el("span",{textContent:"Le cobras"}),cob]),
+    el("div",{className:"bts"},[guardar,el("button",{className:"btn",type:"button",textContent:"Cancelar",onclick:()=>caja.remove()})])
+  ]);
+  const acc=box.querySelector(".acc");acc.after(caja);calc();caja.scrollIntoView({behavior:"smooth",block:"center"});setTimeout(()=>iMonto.focus(),300);
 }
 
 function hora(f){const d=new Date(f),hoy=new Date();const hh=d.toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});

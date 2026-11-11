@@ -351,7 +351,7 @@ function pinta(){
     const fc = document.createElement("div"); fc.className="fch"; fc.textContent = fechaLarga(m.f);
     const tx = document.createElement("div"); tx.className="txt"; tx.textContent = texto(m);
     const pie = document.createElement("div"); pie.className="pie";
-    const h = document.createElement("span"); h.textContent = (m.t==="s" && m.cobro ? "Cobro " + fmt(m.cobro) + " USDT · " : "") + "Saldo: " + fmt2(sd.mapa[m.id]) + " USDT";
+    const h = document.createElement("span"); h.textContent = (m.verificada ? "✅ Wallet verificada · " : "") + (m.t==="s" && m.cobro ? "Cobro " + fmt(m.cobro) + " USDT · " : "") + "Saldo: " + fmt2(sd.mapa[m.id]) + " USDT";
     const acc = document.createElement("div"); acc.className="acc";
     const bc = document.createElement("button"); bc.className="mini"; bc.type="button"; bc.textContent="Compartir";
     bc.onclick = ()=>compartirTexto(texto(m), bc);
