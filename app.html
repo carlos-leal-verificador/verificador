@@ -37,7 +37,8 @@ nav button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;bor
 <script>
 const PAG = {rev:"index.html", calc:"compra.html", mov:"movimientos.html"};
 const marcos = {};
-const v = new URLSearchParams(location.search).get("v") || "";
+const VER = "4"; // se cambia en cada actualización para que el celular cargue lo nuevo
+const v = new URLSearchParams(location.search).get("v") || VER;
 function marco(k){
   if(!marcos[k]){
     const f = document.createElement("iframe");
