@@ -62,6 +62,10 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
 .filaxe{display:flex;gap:8px;align-items:stretch}
 .filaxe .campo{flex:1;min-width:0}
 .filaxe .btn{padding:0 16px;white-space:nowrap}
+.regmov{display:flex;flex-direction:column;gap:8px;border-top:1px dashed var(--line);padding-top:12px;margin-top:4px}
+.provs{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:.9rem;color:var(--muted)}
+.chip{border:2px solid var(--line);background:var(--bg);color:var(--fg);border-radius:999px;padding:6px 16px;font:700 .9rem var(--sans);cursor:pointer}
+.chip.on{border-color:var(--accent);color:var(--accent)}
 </style>
 </head>
 <body>
@@ -99,6 +103,14 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
     </div>
     <button class="btn" id="compartir">Compartir</button>
     <button class="btn sec" id="copiar">Copiar cantidad</button>
+    <div class="regmov">
+      <div class="provs"><span>Proveedor:</span>
+        <button type="button" class="chip" data-prov="Regio">Regio</button>
+        <button type="button" class="chip" data-prov="Kapital">Kapital</button>
+      </div>
+      <button class="btn" id="registrar" type="button">✅ Registrar compra en Movimientos</button>
+      <div class="fuente" id="regEstado"></div>
+    </div>
   </div>
 
   <div class="card">
@@ -136,6 +148,7 @@ const fmt = (n,d=2) => n.toLocaleString("es-MX",{minimumFractionDigits:d,maximum
 function calcular(){
   const monto = num($("monto").value), xe = num($("xe").value), pct = num($("pct").value);
   const precio = Math.round(xe * (1 + pct/100) * 1000) / 1000; // el proveedor redondea a 3 decimales
+  calc = null;
   if(!monto || !xe){ $("big").textContent="—"; ["dXe","dPrecio","dOtro","dCom"].forEach(i=>$(i).textContent="—"); return; }
   $("dXe").textContent = fmt(xe,4);
   $("dPrecio").textContent = fmt(precio,3);
@@ -146,6 +159,7 @@ function calcular(){
     $("dOtro").textContent = fmt(monto) + " USDT";
     $("dCom").textContent = "$" + fmt(com) + " MXN";
     $("big").dataset.copia = pesos.toFixed(2);
+    calc = {pesos, usdt: monto, tc: precio};
   }else{
     const usdt = monto / precio, com = monto - usdt*xe;
     $("big").innerHTML = fmt(usdt) + "<small>USDT</small>";
@@ -153,10 +167,12 @@ function calcular(){
     $("dOtro").textContent = "$" + fmt(monto) + " MXN";
     $("dCom").textContent = "$" + fmt(com) + " MXN";
     $("big").dataset.copia = usdt.toFixed(2);
+    calc = {pesos: monto, usdt, tc: precio};
   }
   try{ localStorage.setItem("pct",$("pct").value); }catch(e){}
 }
 
+let calc = null;
 function ponModo(m){
   modo = m;
   $("tUsd").classList.toggle("on", m==="usd");
@@ -416,6 +432,25 @@ $("xe").addEventListener("paste", ev=>{
 
 $("pct").addEventListener("input", calcular);
 $("actualizar").onclick = ()=>{ actualizar(); cargarGrafica(); };
+(function(){
+  let prov = "";
+  try{ prov = localStorage.getItem("ultProvCompra") || "Regio"; }catch(e){ prov = "Regio"; }
+  const marca = ()=>document.querySelectorAll(".provs .chip").forEach(c=>c.classList.toggle("on", c.dataset.prov===prov));
+  document.querySelectorAll(".provs .chip").forEach(c=>c.onclick=()=>{ prov=c.dataset.prov; try{ localStorage.setItem("ultProvCompra",prov); }catch(e){} marca(); });
+  marca();
+  $("registrar").onclick = ()=>{
+    if(!calc){ $("regEstado").textContent = "Primero escribe la cantidad y el XE."; $("regEstado").style.color="var(--warn)"; return; }
+    let movs = [];
+    try{ movs = JSON.parse(localStorage.getItem("movimientos_v1")||"[]"); }catch(e){}
+    const m = {id:Date.now(), f:Date.now(), t:"e", prov, pesos:Math.round(calc.pesos*100)/100, tc:calc.tc, usdt:Math.round(calc.usdt*100)/100, origen:"calc"};
+    movs.push(m);
+    try{ localStorage.setItem("movimientos_v1", JSON.stringify(movs)); }
+    catch(e){ $("regEstado").textContent = "No se pudo guardar en este celular."; $("regEstado").style.color="var(--warn)"; return; }
+    $("regEstado").textContent = "✔ Registrada: " + fmt(m.usdt) + " USDT de " + prov + ". Ya está en Movimientos.";
+    $("regEstado").style.color = "var(--accent)";
+    if(window.parent !== window){ try{ window.parent.postMessage({ir:"mov"}, location.origin); }catch(e){} }
+  };
+})();
 $("copiar").onclick = async ()=>{
   const v = $("big").dataset.copia; if(!v) return;
   try{ await navigator.clipboard.writeText(v); $("copiar").textContent="¡Copiado!"; }

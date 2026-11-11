@@ -1,0 +1,24 @@
+{
+ "id": "cambio-usdt",
+ "name": "Cambio USDT",
+ "short_name": "Cambio USDT",
+ "start_url": "app.html",
+ "scope": "./",
+ "display": "standalone",
+ "background_color": "#0e1512",
+ "theme_color": "#0e1512",
+ "icons": [
+  {
+   "src": "app.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "app.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "maskable"
+  }
+ ]
+}

@@ -400,6 +400,8 @@ setInterval(()=>{ $("saldoFecha").textContent = fechaLarga(Date.now()); }, 30000
 function marcaProv(){ const v=$("eProv").value.trim().toLowerCase(); document.querySelectorAll("#chipsProv .chip").forEach(c=>c.classList.toggle("on", c.dataset.prov.toLowerCase()===v)); }
 document.querySelectorAll("#chipsProv .chip").forEach(c=>c.onclick=()=>{ $("eProv").value=c.dataset.prov; marcaProv(); });
 $("eProv").addEventListener("input", marcaProv);
+window.addEventListener("storage", e=>{ if(e.key===LS || e.key===null){ movs = leer(LS, []); pinta(); } });
+window.addEventListener("message", e=>{ if(e.origin===location.origin && e.data && e.data.refrescar){ movs = leer(LS, []); pinta(); } });
 $("bSal").onclick = ()=>ponTipo("s");
 $("bEnt").onclick = ()=>ponTipo("e");
 conComas($("sMonto"), calcSal);

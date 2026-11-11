@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0e1512">
+<title>Cambio USDT</title>
+<link rel="manifest" href="app.json">
+<link rel="icon" href="app.png">
+<link rel="apple-touch-icon" href="app.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Cambio USDT">
+<style>
+:root{--bg:#0e1512;--bar:#111b17;--line:#2a3832;--fg:#e7efe9;--muted:#97a89f;--accent:#3cc48f;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}
+#vistas{flex:1;position:relative;min-height:0}
+#vistas iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--bg)}
+#vistas iframe[hidden]{display:none}
+nav{display:grid;grid-template-columns:repeat(3,1fr);background:var(--bar);border-top:1px solid var(--line);
+  padding:8px max(8px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px))}
+nav button{background:none;border:0;color:var(--muted);font:600 .8rem system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;cursor:pointer}
+nav button span{font-size:1.45rem;line-height:1}
+nav button.on{color:var(--accent)}
+nav button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:10px}
+</style>
+</head>
+<body>
+<div id="vistas"></div>
+<nav>
+  <button type="button" data-v="rev"><span>🛡️</span>Revisar</button>
+  <button type="button" data-v="calc"><span>🧮</span>Calcular</button>
+  <button type="button" data-v="mov"><span>📒</span>Movimientos</button>
+</nav>
+<script>
+const PAG = {rev:"index.html", calc:"compra.html", mov:"movimientos.html"};
+const marcos = {};
+const v = new URLSearchParams(location.search).get("v") || "";
+function marco(k){
+  if(!marcos[k]){
+    const f = document.createElement("iframe");
+    f.src = PAG[k] + (v ? "?v=" + encodeURIComponent(v) : "");
+    f.title = k;
+    f.setAttribute("allow","camera; clipboard-read; clipboard-write; web-share");
+    document.getElementById("vistas").append(f);
+    marcos[k] = f;
+  }
+  return marcos[k];
+}
+function ir(k){
+  if(!PAG[k]) k = "calc";
+  Object.keys(marcos).forEach(x=>marcos[x].hidden = x!==k);
+  const f = marco(k); f.hidden = false;
+  document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on", b.dataset.v===k));
+  if(k==="mov"){ try{ f.contentWindow.postMessage({refrescar:true}, location.origin); }catch(e){} }
+  try{ localStorage.setItem("appVista", k); }catch(e){}
+}
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>ir(b.dataset.v));
+window.addEventListener("message", e=>{
+  if(e.origin!==location.origin || !e.data) return;
+  if(e.data.ir) ir(e.data.ir);
+});
+let inicio = "calc";
+try{ inicio = localStorage.getItem("appVista") || "calc"; }catch(e){}
+ir(inicio);
+</script>
+</body>
+</html>
