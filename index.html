@@ -45,6 +45,15 @@ main{padding-block:14px 48px}
 .v .s{color:var(--g);font-size:15px;margin-top:2px}
 .dir{margin:16px 20px 0;text-align:center;font:500 14.5px/1.6 ui-monospace,"Roboto Mono",Menlo,monospace;color:var(--g);word-break:break-all}
 .dir b{color:var(--t);font-weight:700}
+.origen{margin:14px 20px 0;padding:12px 14px;border:1px solid var(--l);border-radius:10px;display:grid;gap:8px;font-size:14px}
+.origen h3{margin:0;font-size:14.5px}
+.origen .barra{display:flex;height:12px;border-radius:99px;overflow:hidden;background:var(--soft)}
+.origen .barra span{display:block;height:100%}
+.origen .fila2{display:flex;justify-content:space-between;gap:8px}
+.origen .fila2 span:first-child{display:flex;align-items:center;gap:6px;min-width:0}
+.origen .pt{width:10px;height:10px;border-radius:50%;flex:none}
+.origen .fila2 b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.origen .nota{color:var(--g);font-size:12.5px}
 .motivos{margin:14px 20px 0;padding:12px 14px;border-radius:10px;font-size:14.5px;display:grid;gap:6px}
 .acc{display:flex;gap:8px;justify-content:center;padding:18px 20px 20px;flex-wrap:wrap}
 .btn{border:1px solid var(--l);background:var(--card);color:var(--t);border-radius:10px;padding:11px 16px;font:500 15px/1 inherit;cursor:pointer}
@@ -157,6 +166,13 @@ h2{font-size:18px;margin:6px 0 4px}
 <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" id="guardarClave">Guardar clave</button><button class="btn" id="borrarClave">Borrar clave</button></div>
 </div>
 <div class="bloque">
+<h2>Clave de Tronscan</h2>
+<p class="sub" style="margin:0">Gratis. Permite ver de dónde viene el dinero de la wallet (exchanges, apuestas, wallets riesgosas). Se guarda solo en este celular. La sacas de tronscan.org → tu cuenta → API Dashboard.</p>
+<input class="campo" id="tsClave" type="password" placeholder="Pega tu clave de Tronscan" autocomplete="off" spellcheck="false">
+<div class="msg" id="tsMsg"></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" id="tsGuardar">Guardar clave</button><button class="btn" id="tsBorrar">Borrar clave</button></div>
+</div>
+<div class="bloque">
 <h2>Clave de MistTrack</h2>
 <p class="sub" style="margin:0">Revisión profesional: puntaje de riesgo, etiquetas y rastreo a varios pasos. Cada revisión usa 1 consulta de tu paquete. Se guarda solo en este celular. La sacas de dashboard.misttrack.io → API Keys.</p>
 <input class="campo" id="mtClave" type="password" placeholder="Pega tu clave de MistTrack" autocomplete="off" spellcheck="false">
@@ -256,10 +272,93 @@ async function listaOFAC(){
   }
   LS.set("ofac",{t:Date.now(),l});return new Set(l);
 }
+/* ---------- Tronscan (etiquetas y origen del dinero) ---------- */
+function tsClave(){try{const v=localStorage.getItem("tskey")||"";return v.startsWith('"')?JSON.parse(v):v;}catch(_){return "";}}
+let tsUltima=0;
+async function ts(ruta){
+  for(let intento=0;intento<3;intento++){
+    const espera=230-(Date.now()-tsUltima);if(espera>0)await sleep(espera);tsUltima=Date.now();
+    const ctl=new AbortController();const to=setTimeout(()=>ctl.abort(),15000);
+    try{
+      const h={};if(tsClave())h["TRON-PRO-API-KEY"]=tsClave();
+      const r=await fetch("https://apilist.tronscanapi.com"+ruta,{headers:h,signal:ctl.signal});
+      if(r.status===429){await sleep(1200*(intento+1));continue;}
+      if(r.status===401||r.status===403)throw new Error("Tronscan: la clave no es válida");
+      if(!r.ok)throw new Error("Tronscan respondió "+r.status);
+      return await r.json();
+    }finally{clearTimeout(to);}
+  }
+  throw new Error("Tronscan está limitando las consultas");
+}
+const EXCHANGES=/binance|okx|okex|huobi|htx|bybit|kucoin|gate\.?io|\bgate\b|bitget|mexc|kraken|bitfinex|coinbase|poloniex|bitso|bingx|bitmart|crypto\.com|coinex|lbank|whitebit|bithumb|upbit|xt\.com|hotcoin|coinw|bitkub|bitstamp|gemini|exchange|cex/i;
+const APUESTAS=/casino|bet|gambl|dice|lotter|slot|poker|wink|jackpot|roulette|baccarat/i;
+const MEZCLADOR=/mix|tornado|tumbl|privacy pool|anonym/i;
+const RIESGO_TXT=/scam|fraud|phish|hack|exploit|heist|stolen|theft|ransom|drain|fake|ponzi|sanction|blacklist|launder|illicit|darknet|estafa/i;
+function categoria(nombre,t){
+  const red=(t&&t.redTag)||"",grey=(t&&t.greyTag)||"";
+  const todo=[nombre,red,grey,(t&&t.blueTag)||"",(t&&t.publicTag)||""].join(" ");
+  if(red||RIESGO_TXT.test(todo))return "riesgo";
+  if(MEZCLADOR.test(todo))return "mezclador";
+  if(APUESTAS.test(todo))return "apuestas";
+  if(EXCHANGES.test(todo))return "exchange";
+  if(grey)return "advertencia";
+  return nombre?"otra":"sin";
+}
+const CAT={exchange:{t:"Exchanges conocidos",c:"var(--ok)"},otra:{t:"Otras wallets identificadas",c:"#60a5fa"},sin:{t:"Wallets sin etiqueta",c:"var(--g2)"},
+  apuestas:{t:"Casinos / apuestas",c:"var(--med)"},advertencia:{t:"Con advertencia",c:"#facc15"},mezclador:{t:"Mezcladores",c:"var(--sev)"},riesgo:{t:"Marcadas como riesgosas",c:"var(--sev)"}};
+async function analizarOrigen(d,prog){
+  const usd=v=>Math.round(v).toLocaleString("es-MX");
+  const rojos=[],amarillos=[],info=[];
+  /* 1) etiquetas de la propia wallet */
+  const propia=await ts("/api/account/tag?address="+d);
+  if(propia.redTag)rojos.push("Tronscan la marca como riesgosa: "+propia.redTag+".");
+  else if(propia.greyTag)amarillos.push("Tronscan la marca con advertencia: "+propia.greyTag+".");
+  /* 2) quién le mandó y a quién le manda (con montos en USD) */
+  prog&&prog("Revisando de dónde viene el dinero…");
+  const [jin,jout]=await Promise.all([
+    ts("/api/deep/account/relatedAccount?address="+d+"&limit=100&sortby=inAmountUsd&direction=0"),
+    ts("/api/deep/account/relatedAccount?address="+d+"&limit=100&sortby=outAmountUsd&direction=0")]);
+  const m={};
+  for(const x of [...(jin.data||[]),...(jout.data||[])]){if(!x.address||x.address===d)continue;
+    const nom=(x.addressTag&&x.addressTag!==x.address)?x.addressTag:"";
+    m[x.address]={a:x.address,nom,inn:+x.inAmountUsd||0,out:+x.outAmountUsd||0};}
+  const lista=Object.values(m);
+  /* 3) etiquetas de riesgo de las contrapartes más grandes */
+  const top=[...lista.filter(x=>x.inn>0).sort((a,b)=>b.inn-a.inn).slice(0,8),...lista.filter(x=>x.out>0).sort((a,b)=>b.out-a.out).slice(0,4)];
+  const ya=new Set();let k=0;
+  for(const x of top){if(ya.has(x.a))continue;ya.add(x.a);
+    prog&&prog(`Revisando de dónde viene el dinero… ${++k}`);
+    try{const t=await ts("/api/account/tag?address="+x.a);x.tag=t;if(!x.nom)x.nom=t.publicTag||t.blueTag||"";}catch(_){}
+  }
+  for(const x of lista)x.cat=categoria(x.nom,x.tag);
+  /* 4) porcentajes del dinero que ENTRÓ */
+  const totIn=lista.reduce((a,x)=>a+x.inn,0),totOut=lista.reduce((a,x)=>a+x.out,0);
+  const porCat={};for(const x of lista)if(x.inn>0)porCat[x.cat]=(porCat[x.cat]||0)+x.inn;
+  const pct=c=>totIn?(porCat[c]||0)/totIn*100:0;
+  const nombres=c=>[...new Set(lista.filter(x=>x.cat===c&&x.inn>0).sort((a,b)=>b.inn-a.inn).map(x=>x.nom||corta(x.a)))].slice(0,3).join(", ");
+  if(totIn>0){
+    const pr=pct("riesgo"),pm=pct("mezclador"),pa=pct("apuestas"),pe=pct("exchange"),pw=pct("advertencia");
+    if(porCat.riesgo){const t=`Origen riesgoso: el ${pr.toFixed(1)}% de su dinero (${usd(porCat.riesgo)} USD) viene de wallets que Tronscan marca como riesgosas (${nombres("riesgo")}).`;
+      (pr>=20||porCat.riesgo>=10000?rojos:pr>=3?amarillos:info).push(t);}
+    if(porCat.mezclador){const t=`Mezclador: el ${pm.toFixed(1)}% de su dinero (${usd(porCat.mezclador)} USD) viene de un mezclador (${nombres("mezclador")}).`;
+      (pm>=10?rojos:amarillos).push(t);}
+    if(porCat.apuestas){const t=`Apuestas: el ${pa.toFixed(1)}% de su dinero (${usd(porCat.apuestas)} USD) viene de casinos o apuestas (${nombres("apuestas")}).`;
+      (pa>=30?amarillos:info).push(t);}
+    if(porCat.advertencia&&pw>=20)info.push(`El ${pw.toFixed(1)}% de su dinero viene de wallets con advertencia en Tronscan (${nombres("advertencia")}).`);
+    if(pe>=50)info.push(`Buena señal: el ${pe.toFixed(0)}% de su dinero viene de exchanges conocidos (${nombres("exchange")}).`);
+  }
+  /* 5) a dónde manda su dinero */
+  const outR=lista.filter(x=>x.out>0&&(x.cat==="riesgo"||x.cat==="mezclador")).reduce((a,x)=>a+x.out,0);
+  if(outR>0&&totOut>0){const p=outR/totOut*100;
+    const t=`Envía a riesgo: el ${p.toFixed(1)}% de lo que manda (${usd(outR)} USD) va a wallets riesgosas o mezcladores.`;(p>=20?amarillos:info).push(t);}
+  const cats=Object.keys(CAT).filter(c=>porCat[c]).map(c=>({c,pct:pct(c),usd:porCat[c]})).sort((a,b)=>b.usd-a.usd);
+  const prin=lista.filter(x=>x.inn>0).sort((a,b)=>b.inn-a.inn)[0];
+  return {rojos,amarillos,info,origen:{totIn,cats,principal:prin?{n:prin.nom||corta(prin.a),usd:prin.inn,c:prin.cat}:null,contrapartes:lista.length,propia:propia.redTag||propia.greyTag||""}};
+}
 async function fechaCongelada(d){ /* Tronscan: cuándo la congeló Tether (si falla, null) */
   const ctl=new AbortController();const to=setTimeout(()=>ctl.abort(),9000);
   try{
-    const r=await fetch(`https://apilist.tronscanapi.com/api/stableCoin/blackList?blackAddress=${d}&start=0&limit=20&sort=2&direction=2`,{signal:ctl.signal});
+    const r=await fetch(`https://apilist.tronscanapi.com/api/stableCoin/blackList?blackAddress=${d}&start=0&limit=20&sort=2&direction=2`,{signal:ctl.signal,headers:tsClave()?{"TRON-PRO-API-KEY":tsClave()}:{}});
     if(!r.ok)return null;const j=await r.json();
     const t=(j.data||[]).filter(x=>!x.blackAddress||x.blackAddress===d).map(x=>Number(x.time)).filter(x=>x>0).map(x=>x<1e12?x*1000:x);
     return t.length?Math.max(...t):null;
@@ -394,6 +493,12 @@ async function revisarUnaVez(d,cliente,prog){
   try{const b=await goplus(d);fuentes.push({f:"GoPlus",e:"ok",h:b.length>0});
       if(b.length)(b.some(x=>GOPLUS_SEVERAS.has(x))?rojos:amarillos).push("GoPlus la marca: "+b.join(", ").replace(/_/g," ")+".");}
   catch(e){fuentes.push({f:"GoPlus",e:"error"});errores.push("GoPlus");}
+  let origen=null;
+  if(tsClave()){
+    try{const o=await analizarOrigen(d,prog);origen=o.origen;rojos.push(...o.rojos);amarillos.push(...o.amarillos);info.push(...o.info);
+      fuentes.push({f:"Tronscan (origen del dinero)",e:"ok",h:o.rojos.length+o.amarillos.length>0});}
+    catch(e){fuentes.push({f:"Tronscan (origen del dinero)",e:"error"});info.push((e.message||"Tronscan no respondió")+" (no afecta el resultado)");}
+  }else info.push("Agrega tu clave de Tronscan en Ajustes para ver de dónde viene el dinero.");
   let mt=null;
   if(mtClave()){prog("Consultando MistTrack…");
     try{const raw=await mistTrack(d,prog);const L=mtLineas(raw);
@@ -469,7 +574,7 @@ async function revisarUnaVez(d,cliente,prog){
   if(resultado!==VERDE&&!desde&&!soloFallas){ /* sin fecha en las fuentes: primera vez que TÚ la detectaste */
     const previas=LS.get("hist",[]).filter(h=>h.direccion===d&&h.resultado!=="LIMPIA").map(h=>Date.parse(h.fecha)).filter(x=>x>0);
     desde={fecha:new Date(Math.min(Date.now(),...previas)).toISOString(),motivo:"primera detección en tus revisiones",tipo:"deteccion"};}
-  return {mt,desde,fecha:new Date().toISOString(),direccion:d,cliente:cliente||"",resultado,motivos:[...rojos,...amarillos],info,fuentes,
+  return {mt,origen,desde,fecha:new Date().toISOString(),direccion:d,cliente:cliente||"",resultado,motivos:[...rojos,...amarillos],info,fuentes,
           saldo,cp,segundos:Math.round((performance.now()-t0)/100)/10};
 }
 
@@ -511,6 +616,14 @@ function pintar(box,r,acciones){
   const kids=[el("div",{className:"v",style:`background:var(--${e.c}bg)`},[el("div",{className:"i",textContent:e.i}),
     el("div",{className:"w",textContent:r.resultado,style:`color:var(--${e.c})`}),el("div",{className:"s",textContent:e.s+(r.cliente?" · "+r.cliente:"")})].concat(textoDesde(r)?[el("div",{textContent:textoDesde(r),style:`color:var(--${e.c});font-size:13px;font-weight:600;margin-top:6px`})]:[]))];
   const dd=el("div",{className:"dir"});dd.append(el("b",{textContent:r.direccion.slice(0,6)}),r.direccion.slice(6,-6),el("b",{textContent:r.direccion.slice(-6)}));kids.push(dd);
+  if(r.origen&&r.origen.cats&&r.origen.cats.length){
+    const o=r.origen,box2=el("div",{className:"origen"});
+    box2.append(el("h3",{textContent:"¿De dónde viene el dinero?"}));
+    const bar=el("div",{className:"barra"});o.cats.forEach(x=>bar.append(el("span",{style:`width:${Math.max(1.5,x.pct)}%;background:${CAT[x.c].c}`})));box2.append(bar);
+    o.cats.forEach(x=>box2.append(el("div",{className:"fila2"},[el("span",{},[el("i",{className:"pt",style:`background:${CAT[x.c].c}`}),el("span",{textContent:CAT[x.c].t})]),el("b",{textContent:(x.pct<1&&x.pct>0?"<1":Math.round(x.pct))+"%"})])));
+    if(o.principal)box2.append(el("div",{className:"nota",textContent:`Origen principal: ${o.principal.n} · ${Math.round(o.principal.usd).toLocaleString("es-MX")} USD`}));
+    box2.append(el("div",{className:"nota",textContent:"Según las etiquetas públicas de Tronscan. \"Sin etiqueta\" no es ni bueno ni malo: son wallets de personas que no están identificadas."}));
+    kids.push(box2);}
   const pq=porQue(r);if(pq.length){const m=el("div",{className:"motivos",style:`background:var(--${e.c}bg);color:var(--${e.c})`});m.append(el("div",{textContent:"Por qué:",style:"font-weight:600;margin-bottom:2px"}));pq.forEach(x=>m.append(el("div",{textContent:"• "+x})));kids.push(m);}
   if(acciones){const a=el("div",{className:"acc"});
     if(e.c!=="sev")a.append(el("button",{className:"btn pri",textContent:"Copiar dirección",onclick:async()=>{try{await navigator.clipboard.writeText(r.direccion);toast("Dirección copiada");}catch(_){toast("No se pudo copiar");}}}));
@@ -582,7 +695,11 @@ function porQue(r){
   const out=[],ya=new Set(),add=(k,t)=>{if(!ya.has(k)){ya.add(k);out.push(t);}};
   const ms=r&&r.motivos||[],todo=ms.join(" ");
   for(const x of ms){
-    if(/^A 2 pasos/.test(x))add("p2","Recibió dinero de alguien que antes lo recibió de una wallet sancionada o congelada.");
+    if(/^Origen riesgoso/.test(x))add("orig","Parte de su dinero viene de wallets marcadas como riesgosas (estafas, robos o fraudes).");
+    else if(/^Mezclador/.test(x))add("mix","Parte de su dinero viene de un mezclador, que se usa para esconder el origen del dinero.");
+    else if(/^Apuestas/.test(x))add("bet","Buena parte de su dinero viene de casinos o apuestas.");
+    else if(/^Envía a riesgo/.test(x))add("outr","Le manda dinero a wallets marcadas como riesgosas.");
+    else if(/^A 2 pasos/.test(x))add("p2","Recibió dinero de alguien que antes lo recibió de una wallet sancionada o congelada.");
     else if(/^Contraparte/.test(x))add("cp","Movió dinero directamente con una wallet "+(/OFAC/.test(x)?"sancionada":"congelada por Tether")+".");
     else if(/^MistTrack/.test(x)){const m=x.match(/(\d+)\/100/);add("mt","MistTrack le da riesgo "+(m?m[1]+" de 100":"alto")+" por su relación con dinero de origen ilícito.");}
     else if(/OFAC/.test(x)&&!/no se pudo/i.test(x))add("ofac","Está en la lista de sanciones de EE.UU. (OFAC).");
@@ -700,7 +817,7 @@ async function dibujarComprobante(r,firma){
   cx.textAlign="left";cx.fillStyle="#334155";cx.font=`500 27px ${SANS}`;cx.fillText("Verificado por "+(firma||"Carlos Leal Rodríguez"),M+46,y);
   cx.textAlign="right";cx.fillStyle="#94a3b8";cx.font=`500 24px ${MONO}`;cx.fillText(folio,W-M,y);
   y+=46;cx.textAlign="left";cx.fillStyle="#a0aec0";cx.font=`400 21px ${SANS}`;
-  for(const l of envolver(cx,(r.mt?"Basado en OFAC, Tether, GoPlus y MistTrack":"Basado en fuentes públicas (OFAC, Tether, GoPlus)")+" a la fecha indicada. No es una certificación ni una opinión legal.",AN)){cx.fillText(l,M,y);y+=29;}
+  for(const l of envolver(cx,(r.mt?"Basado en OFAC, Tether, GoPlus"+(r.origen?", Tronscan":"")+" y MistTrack":"Basado en fuentes públicas (OFAC, Tether, GoPlus"+(r.origen?", Tronscan":"")+")")+" a la fecha indicada. No es una certificación ni una opinión legal.",AN)){cx.fillText(l,M,y);y+=29;}
   const cardBottom=y+48;const H=cardBottom+PAD;
   /* composición final */
   const fin=document.createElement("canvas");fin.width=W;fin.height=H;const fx=fin.getContext("2d");
@@ -834,6 +951,12 @@ $("qrArchivo").onchange=async()=>{
 /* ajustes */
 $("clave").value=clave();
 $("mtClave").value=mtClave();
+$("tsClave").value=tsClave();
+$("tsGuardar").onclick=()=>{const k=$("tsClave").value.trim();
+  if(k.length<20||/\s/.test(k)){$("tsMsg").textContent="Esa clave no parece válida. Cópiala completa desde tronscan.org → API Dashboard.";$("tsMsg").className="msg err";return;}
+  try{localStorage.setItem("tskey",k);}catch(_){}
+  $("tsMsg").textContent="Clave guardada. Desde ahora cada revisión muestra de dónde viene el dinero.";$("tsMsg").className="msg okm";};
+$("tsBorrar").onclick=()=>{try{localStorage.removeItem("tskey");}catch(_){}$("tsClave").value="";$("tsMsg").textContent="Clave borrada.";$("tsMsg").className="msg";};
 $("mtGuardar").onclick=()=>{const k=$("mtClave").value.trim();
   if(k.length<16||/\s/.test(k)){$("mtMsg").textContent="Esa clave no parece válida. Cópiala completa desde dashboard.misttrack.io → API Keys.";$("mtMsg").className="msg err";return;}
   LS.set("mt",k);$("mtMsg").textContent="Clave guardada. Desde ahora cada revisión incluye MistTrack.";$("mtMsg").className="msg okm";};
