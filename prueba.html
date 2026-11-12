@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Prueba Tronscan</title>
+<style>
+:root{--bg:#0e1512;--card:#16201b;--fg:#e7efe9;--muted:#97a89f;--line:#2a3832;--accent:#3cc48f;--rojo:#ff6b5e;--warn:#f0b35a;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 system-ui,-apple-system,Roboto,sans-serif;
+  padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 40px max(16px,env(safe-area-inset-left))}
+main{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+h1{font-size:1.2rem;margin:4px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+label{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+input{width:100%;background:var(--bg);color:var(--fg);border:2px solid var(--line);border-radius:10px;padding:11px;font:15px ui-monospace,Menlo,monospace}
+.btn{border:0;border-radius:12px;padding:13px;font:700 1rem system-ui,sans-serif;background:var(--accent);color:#06281b;cursor:pointer}
+.btn.sec{background:transparent;color:var(--accent);border:2px solid var(--accent)}
+.ok{color:var(--accent)}.mal{color:var(--rojo)}.av{color:var(--warn)}
+.fila{display:flex;justify-content:space-between;gap:10px;font-size:.88rem;border-bottom:1px solid var(--line);padding:6px 0}
+.fila span:first-child{min-width:0;overflow-wrap:anywhere}
+.fila b{font-family:ui-monospace,monospace;white-space:nowrap}
+.nota{font-size:.82rem;color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Prueba de Tronscan</h1>
+  <div class="card">
+    <label for="k">Tu clave de Tronscan</label>
+    <input id="k" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Pega aquí tu clave">
+    <div class="nota">Se guarda solo en este celular. La usará tu Verificador después.</div>
+    <label for="a">Wallet a probar</label>
+    <input id="a" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" value="TJcpnvLvaP7hK9TaF9BQb5RSFD6k2LASkJ">
+    <button class="btn" id="go" type="button">Probar</button>
+  </div>
+  <div class="card" id="out" hidden></div>
+  <button class="btn sec" id="copiar" type="button" hidden>Copiar resultado para Claude</button>
+  <div class="nota" id="copNota" hidden>El resultado que copias no incluye tu clave.</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+try{ const k=localStorage.getItem("tskey"); if(k) $("k").value=k; }catch(e){}
+let resumen={};
+function fila(a,b,c){const d=document.createElement("div");d.className="fila";const x=document.createElement("span");x.textContent=a;const y=document.createElement("b");y.textContent=b;if(c)y.className=c;d.append(x,y);return d;}
+async function pedir(ruta,key){
+  const c=new AbortController();const t=setTimeout(()=>c.abort(),15000);
+  const r={ruta, ok:false};
+  try{
+    const res=await fetch("https://apilist.tronscanapi.com"+ruta,{headers:{"TRON-PRO-API-KEY":key},signal:c.signal});
+    r.status=res.status;
+    const txt=await res.text();
+    try{ r.json=JSON.parse(txt); }catch(_){ r.texto=txt.slice(0,200); }
+    r.ok=res.ok;
+  }catch(e){ r.error=(e&&e.name==="AbortError")?"tardó demasiado":"bloqueado o sin conexión ("+(e&&e.message||"error")+")"; }
+  finally{clearTimeout(t);}
+  return r;
+}
+$("go").onclick=async()=>{
+  const key=$("k").value.trim(), a=$("a").value.trim();
+  if(!key){ $("k").focus(); return; }
+  try{ localStorage.setItem("tskey",key); }catch(e){}
+  const O=$("out"); O.hidden=false; O.replaceChildren(fila("Probando…","⏳"));
+  $("go").disabled=true;
+  const [rel,tag,acc]=await Promise.all([
+    pedir("/api/deep/account/relatedAccount?address="+a+"&limit=50&direction=0&sortby=inAmountUsd",key),
+    pedir("/api/account/tag?address="+a,key),
+    pedir("/api/accountv2?address="+a,key)
+  ]);
+  $("go").disabled=false;
+  O.replaceChildren();
+  const est=r=>r.error?["❌ "+r.error,"mal"]:r.ok?["✅ funciona ("+r.status+")","ok"]:["⚠️ respondió "+r.status,"av"];
+  O.append(fila("Contrapartes (relatedAccount)",...est(rel)));
+  O.append(fila("Etiquetas (account/tag)",...est(tag)));
+  O.append(fila("Cuenta (accountv2)",...est(acc)));
+  resumen={wallet:a, rel:{status:rel.status,error:rel.error,keys:rel.json?Object.keys(rel.json):null,total:rel.json&&rel.json.total,
+      muestra:rel.json&&Array.isArray(rel.json.data)?rel.json.data.slice(0,12).map(x=>({tag:x.addressTag===x.address?"":x.addressTag,in:Math.round(x.inAmountUsd||0),out:Math.round(x.outAmountUsd||0),inN:x.inNum,outN:x.outNum,campos:Object.keys(x).join(",")})):(rel.texto||null)},
+    tag:{status:tag.status,error:tag.error,json:tag.json?JSON.stringify(tag.json).slice(0,700):tag.texto},
+    acc:{status:acc.status,error:acc.error,addressTag:acc.json&&acc.json.addressTag,publicTag:acc.json&&acc.json.publicTag,redTag:acc.json&&acc.json.redTag,greyTag:acc.json&&acc.json.greyTag,feedbackRisk:acc.json&&acc.json.feedbackRisk,date_created:acc.json&&acc.json.date_created}};
+  if(rel.json&&Array.isArray(rel.json.data)){
+    const t=document.createElement("div");t.className="nota";t.textContent="Quién le mandó/recibió dinero (USD):";O.append(t);
+    rel.json.data.slice(0,12).forEach(x=>{
+      const nom=(x.addressTag&&x.addressTag!==x.address)?x.addressTag:(x.address.slice(0,6)+"…"+x.address.slice(-4));
+      O.append(fila(nom,"⬇ "+Math.round(x.inAmountUsd||0).toLocaleString("en-US")+" · ⬆ "+Math.round(x.outAmountUsd||0).toLocaleString("en-US")));
+    });
+  }
+  if(acc.json){ O.append(fila("Etiqueta de la wallet", acc.json.addressTag||acc.json.publicTag||"(sin etiqueta)")); if(acc.json.redTag) O.append(fila("⚠️ Etiqueta roja",acc.json.redTag,"mal")); }
+  $("copiar").hidden=false; $("copNota").hidden=false;
+};
+$("copiar").onclick=async()=>{
+  const t=JSON.stringify(resumen);
+  try{ await navigator.clipboard.writeText(t); $("copiar").textContent="¡Copiado! Pégalo en el chat"; }
+  catch(e){ $("copiar").textContent="No se pudo copiar"; }
+};
+</script>
+</body>
+</html>
