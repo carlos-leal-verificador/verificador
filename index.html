@@ -351,9 +351,47 @@ async function analizarOrigen(d,prog){
   const outR=lista.filter(x=>x.out>0&&(x.cat==="riesgo"||x.cat==="mezclador")).reduce((a,x)=>a+x.out,0);
   if(outR>0&&totOut>0){const p=outR/totOut*100;
     const t=`Envía a riesgo: el ${p.toFixed(1)}% de lo que manda (${usd(outR)} USD) va a wallets riesgosas o mezcladores.`;(p>=20?amarillos:info).push(t);}
+  /* 6) rastreo a 2 y 3 pasos: ¿de dónde sacaron el dinero las wallets que NO están identificadas? */
+  const pasos=[];
+  if(totIn>0){
+    const PESO={2:0.5,3:0.25},MALAS={riesgo:1,mezclador:1,apuestas:1},SIGUE={sin:1,otra:1,advertencia:1};
+    const vistos=new Set([d,...lista.map(x=>x.a)]);const tagsC=new Map();
+    const tagDe=async a=>{if(tagsC.has(a))return tagsC.get(a);let t=null;try{t=await ts("/api/account/tag?address="+a);}catch(_){}tagsC.set(a,t);return t;};
+    let cola=lista.filter(x=>x.inn>0&&SIGUE[x.cat]&&x.inn/totIn>=0.03).sort((a,b)=>b.inn-a.inn).slice(0,3).map(x=>({a:x.a,peso:x.inn/totIn,via:x.nom||corta(x.a)}));
+    let k=0;
+    for(const paso of [2,3]){
+      const exp={},hall=[],sig=[];let revisadas=0,cubierto=0;
+      for(const n of cola){
+        prog&&prog(`Rastreando a ${paso} pasos… ${++k}`);
+        let j;try{j=await ts("/api/deep/account/relatedAccount?address="+n.a+"&limit=100&sortby=inAmountUsd&direction=0");}catch(_){continue;}
+        const arr=(j.data||[]).filter(x=>x.address&&x.address!==n.a&&(+x.inAmountUsd||0)>0).map(x=>({a:x.address,nom:(x.addressTag&&x.addressTag!==x.address)?x.addressTag:"",inn:+x.inAmountUsd||0}));
+        const tot=arr.reduce((s,x)=>s+x.inn,0);if(!tot)continue;
+        for(const y of arr.sort((a,b)=>b.inn-a.inn).slice(0,paso===2?5:4)){
+          if(vistos.has(y.a))continue;vistos.add(y.a);
+          const t=await tagDe(y.a);if(!y.nom)y.nom=(t&&(t.publicTag||t.blueTag))||"";
+          const c=categoria(y.nom,t),e=n.peso*y.inn/tot;revisadas++;cubierto+=e;
+          exp[c]=(exp[c]||0)+e;
+          if(MALAS[c])hall.push({c,e,nom:y.nom||corta(y.a),via:n.via});
+          if(paso===2&&SIGUE[c]&&e>=0.02)sig.push({a:y.a,peso:e,via:n.via});
+        }
+      }
+      if(revisadas)pasos.push({paso,revisadas,cats:Object.keys(CAT).filter(c=>exp[c]).map(c=>({c,pct:exp[c]/cubierto*100})).sort((a,b)=>b.pct-a.pct)});
+      for(const c of ["riesgo","mezclador","apuestas"]){
+        const hs=hall.filter(h=>h.c===c);if(!hs.length)continue;
+        const e=hs.reduce((s,h)=>s+h.e,0),ef=e*PESO[paso],p=(e*100).toFixed(1);
+        const noms=[...new Set(hs.sort((a,b)=>b.e-a.e).map(h=>h.nom))].slice(0,2).join(", "),via=hs[0].via;
+        const que=c==="riesgo"?"wallets que Tronscan marca como riesgosas":c==="mezclador"?"un mezclador":"casinos o apuestas";
+        const t=`Origen indirecto (a ${paso} pasos): cerca del ${p}% de su dinero viene de ${que} (${noms}), pasando por ${via}.`;
+        if(c==="apuestas")(ef>=0.15?amarillos:e>=0.05?info:null)?.push(t);
+        else (ef>=0.15?rojos:ef>=0.02?amarillos:info).push(t);
+      }
+      cola=sig.sort((a,b)=>b.peso-a.peso).slice(0,4);
+      if(!cola.length)break;
+    }
+  }
   const cats=Object.keys(CAT).filter(c=>porCat[c]).map(c=>({c,pct:pct(c),usd:porCat[c]})).sort((a,b)=>b.usd-a.usd);
   const prin=lista.filter(x=>x.inn>0).sort((a,b)=>b.inn-a.inn)[0];
-  return {rojos,amarillos,info,origen:{totIn,cats,principal:prin?{n:prin.nom||corta(prin.a),usd:prin.inn,c:prin.cat}:null,contrapartes:lista.length,propia:propia.redTag||propia.greyTag||""}};
+  return {rojos,amarillos,info,origen:{totIn,cats,pasos,principal:prin?{n:prin.nom||corta(prin.a),usd:prin.inn,c:prin.cat}:null,contrapartes:lista.length,propia:propia.redTag||propia.greyTag||""}};
 }
 async function fechaCongelada(d){ /* Tronscan: cuándo la congeló Tether (si falla, null) */
   const ctl=new AbortController();const to=setTimeout(()=>ctl.abort(),9000);
@@ -622,6 +660,14 @@ function pintar(box,r,acciones){
     const bar=el("div",{className:"barra"});o.cats.forEach(x=>bar.append(el("span",{style:`width:${Math.max(1.5,x.pct)}%;background:${CAT[x.c].c}`})));box2.append(bar);
     o.cats.forEach(x=>box2.append(el("div",{className:"fila2"},[el("span",{},[el("i",{className:"pt",style:`background:${CAT[x.c].c}`}),el("span",{textContent:CAT[x.c].t})]),el("b",{textContent:(x.pct<1&&x.pct>0?"<1":Math.round(x.pct))+"%"})])));
     if(o.principal)box2.append(el("div",{className:"nota",textContent:`Origen principal: ${o.principal.n} · ${Math.round(o.principal.usd).toLocaleString("es-MX")} USD`}));
+    if(o.pasos&&o.pasos.length){
+      box2.append(el("h3",{textContent:"Rastreo hacia atrás",style:"margin-top:6px"}));
+      o.pasos.forEach(ps=>{
+        const malo=ps.cats.some(x=>x.c==="riesgo"||x.c==="mezclador"),ap=ps.cats.some(x=>x.c==="apuestas");
+        box2.append(el("div",{className:"fila2"},[el("span",{textContent:`A ${ps.paso} pasos · ${ps.revisadas} wallets`}),el("b",{textContent:malo?"🔴 Con riesgo":ap?"🟠 Apuestas":"✅ Sin riesgo",style:`color:var(--${malo?"sev":ap?"med":"ok"})`})]));
+        const b=el("div",{className:"barra",style:"height:8px"});ps.cats.forEach(x=>b.append(el("span",{style:`width:${Math.max(1.5,x.pct)}%;background:${CAT[x.c].c}`})));box2.append(b);
+        box2.append(el("div",{className:"nota",textContent:ps.cats.slice(0,3).map(x=>`${CAT[x.c].t} ${x.pct<1?"<1":Math.round(x.pct)}%`).join(" · ")}));});
+    }else if(o.pasos)box2.append(el("div",{className:"nota",textContent:"Rastreo hacia atrás: no hizo falta, el dinero viene de wallets ya identificadas."}));
     box2.append(el("div",{className:"nota",textContent:"Según las etiquetas públicas de Tronscan. \"Sin etiqueta\" no es ni bueno ni malo: son wallets de personas que no están identificadas."}));
     kids.push(box2);}
   const pq=porQue(r);if(pq.length){const m=el("div",{className:"motivos",style:`background:var(--${e.c}bg);color:var(--${e.c})`});m.append(el("div",{textContent:"Por qué:",style:"font-weight:600;margin-bottom:2px"}));pq.forEach(x=>m.append(el("div",{textContent:"• "+x})));kids.push(m);}
@@ -698,6 +744,7 @@ function porQue(r){
     if(/^Origen riesgoso/.test(x))add("orig","Parte de su dinero viene de wallets marcadas como riesgosas (estafas, robos o fraudes).");
     else if(/^Mezclador/.test(x))add("mix","Parte de su dinero viene de un mezclador, que se usa para esconder el origen del dinero.");
     else if(/^Apuestas/.test(x))add("bet","Buena parte de su dinero viene de casinos o apuestas.");
+    else if(/^Origen indirecto/.test(x))add("ind:"+(/riesgosas/.test(x)?"r":/mezclador/.test(x)?"m":"a"),/riesgosas/.test(x)?"Parte de su dinero viene, pasando por otras wallets, de wallets marcadas como riesgosas.":/mezclador/.test(x)?"Parte de su dinero viene, pasando por otras wallets, de un mezclador.":"Buena parte de su dinero viene, pasando por otras wallets, de casinos o apuestas.");
     else if(/^Envía a riesgo/.test(x))add("outr","Le manda dinero a wallets marcadas como riesgosas.");
     else if(/^A 2 pasos/.test(x))add("p2","Recibió dinero de alguien que antes lo recibió de una wallet sancionada o congelada.");
     else if(/^Contraparte/.test(x))add("cp","Movió dinero directamente con una wallet "+(/OFAC/.test(x)?"sancionada":"congelada por Tether")+".");
