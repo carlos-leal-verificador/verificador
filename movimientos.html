@@ -84,6 +84,23 @@ label{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacin
 input[type=date]{background:var(--bg);color:var(--fg);border:2px solid var(--line);border-radius:10px;padding:6px 10px;font:600 .95rem var(--sans)}
 .nota{font-size:.8rem;color:var(--muted)}
 button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+/* comprobantes */
+.thumbs{display:flex;gap:8px;flex-wrap:wrap}
+.th{width:74px;height:96px;border-radius:10px;position:relative;overflow:hidden;border:1px solid var(--line);background:#000}
+.th img{width:100%;height:100%;object-fit:cover;display:block}
+.th button{position:absolute;top:3px;right:3px;background:#000b;color:#fff;border:0;border-radius:50%;width:24px;height:24px;font-size:13px;cursor:pointer}
+.add{width:74px;height:96px;border-radius:10px;border:2px dashed var(--accent);color:var(--accent);background:transparent;font:700 .78rem var(--sans);cursor:pointer;line-height:1.3}
+.mini{white-space:nowrap}
+.mini.clip{border-color:var(--accent);color:var(--accent);background:var(--soft)}
+#visor{position:fixed;inset:0;background:#000;z-index:50;display:flex;flex-direction:column}
+#visor .vtop{display:flex;justify-content:space-between;align-items:center;padding:max(14px,env(safe-area-inset-top)) 16px 8px;color:#fff;font-weight:700}
+#visor .vtit{text-align:center;color:#bbb;font-size:.85rem;padding:0 16px}
+#visor .vimg{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;padding:8px;touch-action:pan-y pinch-zoom}
+#visor .vimg img{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px}
+#visor .vbot{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:10px 14px max(16px,env(safe-area-inset-bottom))}
+#visor .vbot .btn{padding:12px 6px;font-size:.92rem}
+.btn.rojo{background:transparent;color:var(--rojo);border:2px solid var(--rojo);padding:10px 6px}
+.btn.rojo.conf{background:var(--rojobg)}
 </style>
 </head>
 <body>
@@ -123,6 +140,11 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
     </div>
     <datalist id="clientes"></datalist>
     <div class="calc"><span>Le cobras</span><b id="sCobro">—</b></div>
+    <div id="compBox"><label>📎 Comprobantes <span id="compN"></span></label>
+      <div class="thumbs" id="thumbs" style="margin-top:6px">
+        <button class="add" type="button" id="addCam">📷<br>Tomar<br>foto</button>
+        <button class="add" type="button" id="addGal">🖼️<br>De<br>galería</button>
+      </div></div>
     <button class="btn" id="sGuardar" type="button">Guardar salida</button>
   </div>
 
@@ -183,6 +205,20 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
     <div class="lista" id="lista"></div>
   </div>
 
+  <input type="file" id="inCam" accept="image/*" capture="environment" hidden>
+  <input type="file" id="inGal" accept="image/*" multiple hidden>
+  <input type="file" id="inAdd" accept="image/*" multiple hidden>
+  <div id="visor" hidden>
+    <div class="vtop"><button class="mini" id="vCerrar" type="button" style="color:#fff">✕ Cerrar</button><span id="vNum" style="color:#aaa"></span></div>
+    <div class="vtit" id="vTit"></div>
+    <div class="vimg" id="vImg"></div>
+    <div class="vbot">
+      <button class="btn" id="vComp" type="button">Compartir</button>
+      <button class="btn sec" id="vMas" type="button">➕ Foto</button>
+      <button class="btn rojo" id="vBorrar" type="button">Borrar foto</button>
+    </div>
+  </div>
+
   <div class="card">
     <h2>Respaldo</h2>
     <div class="nota">Tus movimientos se guardan en este celular. Haz un respaldo de vez en cuando para no perderlos.</div>
@@ -215,12 +251,97 @@ function conComas(inp, cb){
   });
 }
 
+/* ===== comprobantes (fotos) en IndexedDB ===== */
+let dbP = null;
+function db(){
+  if(!dbP) dbP = new Promise((ok,no)=>{ const r = indexedDB.open("comprobantes",1);
+    r.onupgradeneeded = ()=>{ const st = r.result.createObjectStore("fotos",{keyPath:"id",autoIncrement:true}); st.createIndex("mov","mov"); };
+    r.onsuccess = ()=>ok(r.result); r.onerror = ()=>no(r.error); });
+  return dbP;
+}
+async function tx(modo, fn){ const d = await db(); return new Promise((ok,no)=>{ const t = d.transaction("fotos",modo); const st = t.objectStore("fotos"); let res; Promise.resolve(fn(st)).then(v=>res=v); t.oncomplete=()=>ok(res); t.onerror=()=>no(t.error); t.onabort=()=>no(t.error); }); }
+const req = r => new Promise((ok,no)=>{ r.onsuccess=()=>ok(r.result); r.onerror=()=>no(r.error); });
+async function fotosDe(mov){ return tx("readonly", st=>req(st.index("mov").getAll(mov))); }
+async function guardaFotos(mov, blobs){ if(!blobs.length) return; await tx("readwrite", st=>{ blobs.forEach(b=>st.add({mov, f:Date.now(), blob:b})); }); }
+async function borraFoto(id){ await tx("readwrite", st=>{ st.delete(id); }); }
+async function borraFotosDe(mov){ const fs = await fotosDe(mov); await tx("readwrite", st=>{ fs.forEach(x=>st.delete(x.id)); }); }
+let conteo = {};
+async function cuenta(){ const c2 = {}; try{ await tx("readonly", st=>new Promise(ok=>{ const r = st.index("mov").openKeyCursor(); r.onsuccess = ()=>{ const c = r.result; if(c){ c2[c.key]=(c2[c.key]||0)+1; c.continue(); } else ok(); }; r.onerror = ()=>ok(); })); conteo = c2; }catch(e){} }
+/* achica la foto para que pese poco pero se lea bien */
+async function achica(file){
+  try{
+    const img = await new Promise((ok,no)=>{ const i = new Image(); i.onload=()=>ok(i); i.onerror=no; i.src = URL.createObjectURL(file); });
+    const max = 1600, k = Math.min(1, max/Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth*k); c.height = Math.round(img.naturalHeight*k);
+    const cx = c.getContext("2d"); cx.fillStyle="#fff"; cx.fillRect(0,0,c.width,c.height); cx.drawImage(img,0,0,c.width,c.height);
+    URL.revokeObjectURL(img.src);
+    return await new Promise(ok=>c.toBlob(b=>ok(b||file),"image/jpeg",0.78));
+  }catch(e){ return file; }
+}
+let pend = [];
+function pintaPend(){
+  const T = $("thumbs"); T.querySelectorAll(".th").forEach(x=>{ URL.revokeObjectURL(x.dataset.u); x.remove(); });
+  pend.forEach((b,i)=>{ const d = document.createElement("div"); d.className="th"; const u = URL.createObjectURL(b); d.dataset.u = u;
+    const im = document.createElement("img"); im.src = u; im.alt = "Comprobante " + (i+1);
+    const x = document.createElement("button"); x.type="button"; x.textContent="✕"; x.setAttribute("aria-label","Quitar foto"); x.onclick=()=>{ pend.splice(i,1); pintaPend(); };
+    d.append(im, x); T.insertBefore(d, $("addCam")); });
+  $("compN").textContent = pend.length ? "("+pend.length+")" : "";
+}
+async function agregaPend(files){ for(const f of files) pend.push(await achica(f)); pintaPend(); }
+$("addCam").onclick = ()=>$("inCam").click();
+$("addGal").onclick = ()=>$("inGal").click();
+$("inCam").onchange = e=>{ agregaPend([...e.target.files]); e.target.value=""; };
+$("inGal").onchange = e=>{ agregaPend([...e.target.files]); e.target.value=""; };
+/* visor */
+let vMov = null, vFotos = [], vI = 0, vUrl = "";
+async function abreVisor(m, i){
+  vMov = m; vFotos = await fotosDe(m.id); vI = Math.min(i||0, Math.max(0, vFotos.length-1));
+  $("vTit").textContent = texto(m).split("\n").join(" · ");
+  $("visor").hidden = false; document.body.style.overflow = "hidden"; pintaVisor();
+}
+function pintaVisor(){
+  if(vUrl) URL.revokeObjectURL(vUrl); vUrl = "";
+  const C = $("vImg"); C.innerHTML = "";
+  $("vNum").textContent = vFotos.length ? (vI+1) + " de " + vFotos.length : "Sin fotos";
+  $("vComp").disabled = $("vBorrar").disabled = !vFotos.length;
+  if(!vFotos.length){ C.innerHTML = '<div class="vacio" style="color:#bbb">Este movimiento no tiene fotos. Toca ➕ Foto.</div>'; return; }
+  vUrl = URL.createObjectURL(vFotos[vI].blob);
+  const im = document.createElement("img"); im.src = vUrl; im.alt = "Comprobante"; C.append(im);
+}
+function cierraVisor(){ $("visor").hidden = true; document.body.style.overflow = ""; if(vUrl) URL.revokeObjectURL(vUrl); vUrl=""; cuenta().then(pinta); }
+$("vCerrar").onclick = cierraVisor;
+let x0 = null;
+$("vImg").addEventListener("touchstart", e=>{ x0 = e.touches.length===1 ? e.touches[0].clientX : null; }, {passive:true});
+$("vImg").addEventListener("touchend", e=>{ if(x0===null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null;
+  if(Math.abs(dx) > 50 && vFotos.length > 1){ vI = (vI + (dx<0?1:-1) + vFotos.length) % vFotos.length; pintaVisor(); } });
+$("vImg").onclick = e=>{ if(vFotos.length>1){ const r = $("vImg").getBoundingClientRect(); vI = (vI + (e.clientX > r.left + r.width/2 ? 1 : -1) + vFotos.length) % vFotos.length; pintaVisor(); } };
+$("vComp").onclick = async ()=>{
+  const f = vFotos[vI]; if(!f) return;
+  const file = new File([f.blob], "comprobante-" + diaDe(vMov.f) + "-" + (vI+1) + ".jpg", {type:"image/jpeg"});
+  try{ if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], text: texto(vMov)}); return; } }catch(e){ if(e && e.name==="AbortError") return; }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(file); a.download = file.name; a.click();
+};
+$("vBorrar").onclick = async ()=>{
+  const b = $("vBorrar");
+  if(!b.classList.contains("conf")){ b.classList.add("conf"); b.textContent="¿Seguro?"; setTimeout(()=>{ b.classList.remove("conf"); b.textContent="Borrar foto"; },3000); return; }
+  b.classList.remove("conf"); b.textContent="Borrar foto";
+  await borraFoto(vFotos[vI].id); vFotos.splice(vI,1); vI = Math.max(0, vI-1); pintaVisor();
+};
+$("vMas").onclick = ()=>$("inAdd").click();
+$("inAdd").onchange = async e=>{
+  const fs = [...e.target.files]; e.target.value=""; if(!fs.length || !vMov) return;
+  const bl = []; for(const f of fs) bl.push(await achica(f));
+  await guardaFotos(vMov.id, bl); vFotos = await fotosDe(vMov.id); vI = vFotos.length-1; pintaVisor();
+};
+try{ navigator.storage && navigator.storage.persist && navigator.storage.persist(); }catch(e){}
+
 function ponTipo(t){
   tipo = t;
   $("bSal").classList.toggle("on", t==="s");
   $("bEnt").classList.toggle("on", t==="e");
   $("fSal").hidden = t!=="s";
   $("fEnt").hidden = t!=="e";
+  const g = t==="s" ? $("sGuardar") : $("eGuardar"); g.parentNode.insertBefore($("compBox"), g);
 }
 
 function calcSal(){
@@ -251,6 +372,7 @@ function avisa(inp){ inp.parentNode.style.borderColor="var(--rojo)"; inp.focus()
 function guardar(m){
   movs.push(m); escribir(LS, movs);
   ultimoId = m.id;
+  if(pend.length){ const bl = pend; pend = []; pintaPend(); guardaFotos(m.id, bl).then(cuenta).then(pinta).catch(()=>alert("No se pudieron guardar las fotos")); }
   $("msg").textContent = texto(m);
   $("msgFecha").textContent = fechaLarga(m.f);
   $("listo").hidden = false;
@@ -358,11 +480,14 @@ function pinta(){
     const bb = document.createElement("button"); bb.className="mini borrar"; bb.type="button"; bb.textContent="Borrar";
     bb.onclick = ()=>{
       if(!bb.classList.contains("conf")){ bb.classList.add("conf"); bb.textContent="¿Borrar?"; setTimeout(()=>{bb.classList.remove("conf");bb.textContent="Borrar";},3000); return; }
-      movs = movs.filter(x=>x.id!==m.id); escribir(LS, movs);
+      movs = movs.filter(x=>x.id!==m.id); escribir(LS, movs); borraFotosDe(m.id).then(cuenta).catch(()=>{});
       if(m.id===ultimoId){ $("listo").hidden = true; ultimoId = null; }
       pinta();
     };
-    acc.append(bc, bb); pie.append(h, acc); el.append(fc, tx, pie); L.append(el);
+    const nf = conteo[m.id]||0;
+    const bf = document.createElement("button"); bf.type="button"; bf.className = "mini" + (nf ? " clip" : ""); bf.textContent = nf ? "📎 " + nf : "📎 Agregar";
+    bf.onclick = ()=>{ if(!nf){ vMov = m; $("inAdd").click(); } abreVisor(m, 0); };
+    acc.append(bf, bc, bb); pie.append(h, acc); el.append(fc, tx, pie); L.append(el);
   });
   const clis = [...new Set(movs.filter(m=>m.t==="s").map(m=>m.cli))];
   $("clientes").innerHTML = clis.map(c=>'<option value="'+c.replace(/"/g,"&quot;")+'">').join("");
@@ -417,7 +542,9 @@ $("sPct").value = leer("ultPct", "");
 $("eProv").value = leer("ultProv", "Regio");
 $("dia").value = diaDe(Date.now());
 marcaProv();
+ponTipo("s");
 pinta();
+cuenta().then(pinta);
 </script>
 </body>
 </html>
