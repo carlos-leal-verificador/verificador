@@ -375,16 +375,21 @@ async function analizarOrigen(d,prog){
           if(paso===2&&SIGUE[c]&&e>=0.02)sig.push({a:y.a,peso:e,via:n.via});
         }
       }
-      if(revisadas)pasos.push({paso,revisadas,cats:Object.keys(CAT).filter(c=>exp[c]).map(c=>({c,pct:exp[c]/cubierto*100})).sort((a,b)=>b.pct-a.pct)});
+      let nivel=hall.length?"poco":"ok";
+      const ps={paso,revisadas,cats:Object.keys(CAT).filter(c=>exp[c]).map(c=>({c,pct:exp[c]/cubierto*100})).sort((a,b)=>b.pct-a.pct)};
+      if(revisadas)pasos.push(ps);
       for(const c of ["riesgo","mezclador","apuestas"]){
         const hs=hall.filter(h=>h.c===c);if(!hs.length)continue;
-        const e=hs.reduce((s,h)=>s+h.e,0),ef=e*PESO[paso],p=(e*100).toFixed(1);
+        const e=hs.reduce((s,h)=>s+h.e,0),ef=e*PESO[paso],p=e<0.001?"menos del 0.1":(e*100).toFixed(1);
         const noms=[...new Set(hs.sort((a,b)=>b.e-a.e).map(h=>h.nom))].slice(0,2).join(", "),via=hs[0].via;
         const que=c==="riesgo"?"wallets que Tronscan marca como riesgosas":c==="mezclador"?"un mezclador":"casinos o apuestas";
-        const t=`Origen indirecto (a ${paso} pasos): cerca del ${p}% de su dinero viene de ${que} (${noms}), pasando por ${via}.`;
-        if(c==="apuestas")(ef>=0.15?amarillos:e>=0.05?info:null)?.push(t);
-        else (ef>=0.15?rojos:ef>=0.02?amarillos:info).push(t);
+        const t=`Origen indirecto (a ${paso} pasos): ${e<0.001?"":"cerca del "}${p}% de su dinero viene de ${que} (${noms}), pasando por ${via}.`;
+        const dest=c==="apuestas"?(ef>=0.15?amarillos:e>=0.05?info:null):(ef>=0.15?rojos:ef>=0.02?amarillos:info);
+        if(dest)dest.push(t);
+        const nv=dest===rojos?"rojo":dest===amarillos?"amarillo":"poco";
+        if(nv==="rojo"||(nv==="amarillo"&&nivel!=="rojo"))nivel=nv;
       }
+      ps.nivel=nivel;
       cola=sig.sort((a,b)=>b.peso-a.peso).slice(0,4);
       if(!cola.length)break;
     }
@@ -663,8 +668,9 @@ function pintar(box,r,acciones){
     if(o.pasos&&o.pasos.length){
       box2.append(el("h3",{textContent:"Rastreo hacia atrás",style:"margin-top:6px"}));
       o.pasos.forEach(ps=>{
-        const malo=ps.cats.some(x=>x.c==="riesgo"||x.c==="mezclador"),ap=ps.cats.some(x=>x.c==="apuestas");
-        box2.append(el("div",{className:"fila2"},[el("span",{textContent:`A ${ps.paso} pasos · ${ps.revisadas} wallets`}),el("b",{textContent:malo?"🔴 Con riesgo":ap?"🟠 Apuestas":"✅ Sin riesgo",style:`color:var(--${malo?"sev":ap?"med":"ok"})`})]));
+        const nv=ps.nivel||(ps.cats.some(x=>x.c==="riesgo"||x.c==="mezclador"||x.c==="apuestas")?"poco":"ok");
+        const L={rojo:["🔴 Con riesgo","sev"],amarillo:["🟠 Revisar","med"],poco:["⚪ Muy poco, no afecta","g"],ok:["✅ Sin riesgo","ok"]}[nv];
+        box2.append(el("div",{className:"fila2"},[el("span",{textContent:`A ${ps.paso} pasos · ${ps.revisadas} wallets`}),el("b",{textContent:L[0],style:`color:var(--${L[1]})`})]));
         const b=el("div",{className:"barra",style:"height:8px"});ps.cats.forEach(x=>b.append(el("span",{style:`width:${Math.max(1.5,x.pct)}%;background:${CAT[x.c].c}`})));box2.append(b);
         box2.append(el("div",{className:"nota",textContent:ps.cats.slice(0,3).map(x=>`${CAT[x.c].t} ${x.pct<1?"<1":Math.round(x.pct)}%`).join(" · ")}));});
     }else if(o.pasos)box2.append(el("div",{className:"nota",textContent:"Rastreo hacia atrás: no hizo falta, el dinero viene de wallets ya identificadas."}));
