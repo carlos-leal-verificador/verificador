@@ -1269,6 +1269,6 @@ refrescarAviso();estado();
     if(ms>0){efectosCuadro(ms,px,py,R);cohetesCuadro(ms,px,py,R);}
   }
   if(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches){cuadro(0);addEventListener("resize",()=>cuadro(0));return;}
-  let ult=0;function bucle(ms){if(ms-ult>33){cuadro(ms);ult=ms;}requestAnimationFrame(bucle);}requestAnimationFrame(bucle);
+  let ult=0;function bucle(ms){if(innerWidth>0&&ms-ult>33){cuadro(ms);ult=ms;}requestAnimationFrame(bucle);}requestAnimationFrame(bucle);
 })();
 </script></body></html>

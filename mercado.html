@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#121a1e">
+<title>Mercado</title>
+<style>
+:root{--card:rgba(16,24,28,.86);--t:#eef0ea;--g:#a9b6b3;--g2:#7d8f8f;--l:#2d4449;--acc:#709e9f;--ok:#34d399;--sev:#f87171;--med:#fb923c;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:#0d1417;color:var(--t);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
+#fondo{position:fixed;inset:0;width:100vw;height:100vh;z-index:-1;pointer-events:none}
+.wrap{max-width:560px;margin:0 auto;padding:max(14px,env(safe-area-inset-top)) 14px 28px;display:flex;flex-direction:column;gap:11px}
+.hd{display:flex;justify-content:space-between;align-items:baseline;padding:4px 2px}
+.hd h1{margin:0;font-size:22px}.hd span{font-size:12px;color:var(--g);text-shadow:0 1px 3px #000}
+.c{background:var(--card);border:1px solid var(--l);border-radius:16px;padding:12px 14px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.lab{font-size:11px;color:var(--g);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+.big{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.big b{font:800 34px/1.1 ui-monospace,"Roboto Mono",Menlo,monospace;font-variant-numeric:tabular-nums}
+.up{color:var(--sev);font-weight:700}.dn{color:var(--ok);font-weight:700}
+.sub{font-size:12.5px;color:var(--g)}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:5px 0;font-size:14.5px}
+.row b{font-family:ui-monospace,"Roboto Mono",Menlo,monospace;font-variant-numeric:tabular-nums}
+.pill{font-size:12px;padding:3px 9px;border-radius:99px;background:#0b2a24;color:var(--ok);border:1px solid #16624a;white-space:nowrap}
+.pill.neg{background:#2c1218;color:#fca5a5;border-color:#7a2030}
+.warn{background:#2c1218;border:1px solid #7a2030;color:#fca5a5;border-radius:12px;padding:9px 12px;font-size:13.5px;font-weight:700}
+.ev{display:flex;gap:8px;align-items:baseline;font-size:13.5px;padding:6px 0;border-bottom:1px solid #2d444966}.ev:last-child{border:0}
+.ev i{font-style:normal;color:var(--g);min-width:38px;font:600 12px ui-monospace,Menlo,monospace}
+.res p{margin:0 0 6px;font-size:13.5px}
+.fu{font-size:11.5px;color:var(--g2)}.fu a{color:var(--g)}
+.vacio{font-size:13px;color:var(--g)}
+svg{display:block;width:100%;height:84px;margin-top:6px}
+.err{font-size:12.5px;color:var(--med)}
+.pie{text-align:center;font-size:11.5px;color:var(--g2);text-shadow:0 1px 3px #000}
+button.re{background:none;border:1px solid var(--l);color:var(--g);border-radius:10px;padding:7px 12px;font:inherit;font-size:13px;cursor:pointer}
+</style></head><body>
+<canvas id="fondo" aria-hidden="true"></canvas>
+<div class="wrap">
+  <div class="hd"><h1>📈 Mercado</h1><span id="hora"></span></div>
+  <div class="warn" id="alerta" hidden></div>
+
+  <div class="c">
+    <div class="lab">Dólar · USD/MXN</div>
+    <div class="big"><b id="xe">—</b><span id="cambio"></span></div>
+    <div class="sub" id="xeSub">Cargando…</div>
+    <svg id="graf" viewBox="0 0 340 84" preserveAspectRatio="none" aria-label="Gráfica del dólar de las últimas 24 horas"></svg>
+    <div class="sub" id="grafSub"></div>
+  </div>
+
+  <div class="c">
+    <div class="lab">Tu precio de compra hoy (XE + 0.5%)</div>
+    <div class="row"><span>Regio</span><b id="pRegio">—</b></div>
+    <div class="row"><span>Kapital</span><b id="pKap">—</b></div>
+  </div>
+
+  <div class="c">
+    <div class="lab">USDT en el mercado</div>
+    <div id="usdt"><div class="vacio">Cargando…</div></div>
+  </div>
+
+  <div class="c">
+    <div class="lab">📅 Días peligrosos</div>
+    <div id="eventos"><div class="vacio">Cargando…</div></div>
+  </div>
+
+  <div class="c res">
+    <div class="lab" id="resLab">☀️ Resumen de la mañana</div>
+    <div id="resumen"><div class="vacio">Cargando…</div></div>
+  </div>
+
+  <div class="pie">Se actualiza cada 5 minutos · <button class="re" id="re" type="button">Actualizar</button></div>
+  <div class="pie">Estimaciones para ayudarte a decidir · no es asesoría financiera</div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const f3=n=>n.toLocaleString("es-MX",{minimumFractionDigits:3,maximumFractionDigits:3});
+const f2=n=>n.toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2});
+const el=(t,p,h)=>{const e=document.createElement(t);if(p)Object.assign(e,p);if(h)(Array.isArray(h)?h:[h]).forEach(x=>x&&e.append(x));return e;};
+function clave(){try{return (localStorage.getItem("tdKey")||"").trim();}catch(e){return "";}}
+async function jget(url,ms){const c=new AbortController(),t=setTimeout(()=>c.abort(),ms||9000);try{const r=await fetch(url,{signal:c.signal,cache:"no-store"});if(!r.ok)throw new Error("HTTP "+r.status);return await r.json();}finally{clearTimeout(t);}}
+function horaTxt(d){return d.toLocaleString("es-MX",{weekday:"short",day:"numeric",month:"short",hour:"numeric",minute:"2-digit"});}
+
+let xeActual=null;
+/* ---------- dólar ---------- */
+async function dolar(){
+  const k=clave();
+  if(k){
+    try{
+      const [q,s]=await Promise.all([
+        jget("https://api.twelvedata.com/quote?symbol=USD/MXN&apikey="+encodeURIComponent(k)),
+        jget("https://api.twelvedata.com/time_series?symbol=USD/MXN&interval=5min&outputsize=288&timezone=UTC&apikey="+encodeURIComponent(k))]);
+      if(q.status==="error")throw new Error(q.message||"Twelve Data");
+      const precio=parseFloat(q.close),ant=parseFloat(q.previous_close);
+      let pts=[];if(Array.isArray(s.values))pts=s.values.map(x=>({t:Date.parse(x.datetime.replace(" ","T")+"Z"),v:parseFloat(x.close)})).filter(x=>isFinite(x.t)&&x.v>5&&x.v<50).sort((a,b)=>a.t-b.t);
+      const ult=isFinite(precio)&&precio>5?precio:(pts.length?pts[pts.length-1].v:NaN);
+      if(!isFinite(ult))throw new Error("sin precio");
+      pintaDolar(ult,ant,pts);return;
+    }catch(e){$("grafSub").textContent="";$("grafSub").append(el("span",{className:"err",textContent:"Twelve Data: "+e.message+" · uso otra fuente."}));}
+  }
+  try{const j=await jget("https://api.coinbase.com/v2/exchange-rates?currency=USD");const v=parseFloat(j.data.rates.MXN);pintaDolar(v,NaN,[]);
+    if(!k)$("grafSub").textContent="Para ver la gráfica, agrega tu clave de Twelve Data en Calcular.";}
+  catch(e){$("xeSub").textContent="No pude leer el dólar ahorita. Revisa tu internet.";}
+}
+function pintaDolar(v,ant,pts){
+  xeActual=v;$("xe").textContent=f3(v);
+  const ca=$("cambio");ca.textContent="";ca.className="";
+  if(isFinite(ant)&&ant>0){const d=v-ant,p=d/ant*100;ca.textContent=(d>=0?"▲ ":"▼ ")+f3(Math.abs(d))+" ("+(Math.abs(p)).toFixed(2)+"%)";ca.className=d>=0?"up":"dn";
+    $("xeSub").textContent=(d>=0?"El peso se debilita hoy":"El peso se fortalece hoy")+" · cierre anterior "+f3(ant);}
+  else $("xeSub").textContent="Precio de referencia";
+  const g=$("graf");g.innerHTML="";
+  if(pts.length>3){
+    const lo=Math.min(...pts.map(p=>p.v)),hi=Math.max(...pts.map(p=>p.v)),r=(hi-lo)||.01,t0=pts[0].t,t1=pts[pts.length-1].t;
+    const X=t=>(t-t0)/(t1-t0||1)*340,Y=v=>78-(v-lo)/r*70;
+    const d=pts.map((p,i)=>(i?"L":"M")+X(p.t).toFixed(1)+" "+Y(p.v).toFixed(1)).join(" ");
+    g.innerHTML='<defs><linearGradient id="gg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#709e9f" stop-opacity=".5"/><stop offset="1" stop-color="#709e9f" stop-opacity="0"/></linearGradient></defs>'+
+      '<path d="'+d+' L340 84 L0 84Z" fill="url(#gg)"/><path d="'+d+'" fill="none" stroke="#9fd0d1" stroke-width="2" vector-effect="non-scaling-stroke"/>'+
+      '<circle cx="'+X(t1).toFixed(1)+'" cy="'+Y(pts[pts.length-1].v).toFixed(1)+'" r="3.5" fill="#fff"/>';
+    $("grafSub").textContent="Últimas 24 h · mínimo "+f3(lo)+" · máximo "+f3(hi);
+  }
+  const compra=Math.round(v*1.005*1000)/1000;$("pRegio").textContent=f3(compra);$("pKap").textContent=f3(compra);
+}
+/* ---------- USDT ---------- */
+async function usdt(){
+  const filas=[];
+  const fuentes=[
+    ["Bitso",async()=>{const j=await jget("https://api.bitso.com/v3/ticker/?book=usdt_mxn");return parseFloat(j.payload.last);}],
+    ["Binance",async()=>{const j=await jget("https://api.binance.com/api/v3/ticker/price?symbol=USDTMXN");return parseFloat(j.price);}],
+    ["Promedio mercado",async()=>{const j=await jget("https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=mxn");return parseFloat(j.tether.mxn);}]];
+  const r=await Promise.allSettled(fuentes.map(f=>f[1]()));
+  r.forEach((x,i)=>{if(x.status==="fulfilled"&&isFinite(x.value)&&x.value>5&&x.value<50)filas.push([fuentes[i][0],x.value]);});
+  const box=$("usdt");box.innerHTML="";
+  if(!filas.length){box.append(el("div",{className:"vacio",textContent:"No pude leer precios de USDT ahorita."}));return;}
+  filas.forEach(([n,v])=>box.append(el("div",{className:"row"},[el("span",{textContent:n}),el("b",{textContent:f2(v)})])));
+  if(xeActual){const compra=Math.round(xeActual*1.005*1000)/1000,vs=filas.map(f=>(f[1]/compra-1)*100),mn=Math.min(...vs),mx=Math.max(...vs);
+    const s=x=>(x>=0?"+":"")+x.toFixed(2)+"%";
+    box.append(el("div",{className:"row"},[el("span",{textContent:"Margen vs. tu compra"}),el("span",{className:"pill"+(mx<0?" neg":""),textContent:filas.length>1?s(mn)+" a "+s(mx):s(mn)})]));}
+}
+/* ---------- calendario y resumen (los deja tu tarea de las 7:31) ---------- */
+async function resumen(){
+  let j=null;try{j=await jget("mercado.json?t="+Date.now());}catch(e){}
+  const ev=$("eventos"),rs=$("resumen");ev.innerHTML="";rs.innerHTML="";
+  if(!j){const m="Aquí aparecerán el calendario y el resumen de cada mañana cuando tu tarea de las 7:31 empiece a guardarlos.";
+    ev.append(el("div",{className:"vacio",textContent:m}));rs.append(el("div",{className:"vacio",textContent:"Mientras tanto, te llega por la app de Claude o por correo."}));$("alerta").hidden=true;return;}
+  if(j.alerta){$("alerta").textContent="⚠️ "+j.alerta;$("alerta").hidden=false;}else $("alerta").hidden=true;
+  const ic={alto:"🔴",medio:"🟠",bajo:"🟢"};
+  (j.eventos||[]).forEach(e=>ev.append(el("div",{className:"ev"},[el("i",{textContent:String(e.dia||"").slice(0,4).toUpperCase()}),el("span",{textContent:(ic[e.imp]||"⚪")+" "+(e.txt||"")+(e.hora?" · "+e.hora:"")})])));
+  if(!(j.eventos||[]).length)ev.append(el("div",{className:"vacio",textContent:"Sin eventos fuertes hoy ni mañana."}));
+  if(j.actualizado){const d=new Date(j.actualizado);if(!isNaN(d))$("resLab").textContent="☀️ Resumen de la mañana · "+horaTxt(d);}
+  (j.resumen||[]).forEach(l=>rs.append(el("p",{textContent:l})));
+  if(Array.isArray(j.fuentes)&&j.fuentes.length){const fu=el("div",{className:"fu"},[document.createTextNode("Fuentes: ")]);
+    j.fuentes.forEach((x,i)=>{if(i)fu.append(document.createTextNode(" · "));const u=String(x.u||"");fu.append(/^https:\/\//.test(u)?el("a",{href:u,target:"_blank",rel:"noopener",textContent:x.t||u}):document.createTextNode(x.t||""));});rs.append(fu);}
+}
+/* ---------- ciclo ---------- */
+let ultima=0;
+async function todo(){ultima=Date.now();$("hora").textContent=horaTxt(new Date());await dolar();await Promise.all([usdt(),resumen()]);}
+function visible(){return document.visibilityState==="visible"&&innerWidth>0;}
+setInterval(()=>{if(visible())todo();},5*60*1000);
+document.addEventListener("visibilitychange",()=>{if(visible()&&Date.now()-ultima>4*60*1000)todo();});
+addEventListener("resize",()=>{if(visible()&&Date.now()-ultima>4*60*1000)todo();});
+$("re").onclick=todo;
+todo();
+
+/* ---------- fondo: la misma nebulosa del Verificador, quieta (no gasta batería) ---------- */
+(function(){
+  const cv=$("fondo"),cx=cv.getContext("2d");
+  let neb=null;
+  function hazNebulosa(){
+    const w=360,h=640,c=document.createElement("canvas");c.width=w;c.height=h;const x=c.getContext("2d"),img=x.createImageData(w,h),d=img.data;
+    const P=new Uint8Array(512);{const p=[...Array(256).keys()];for(let i=255;i>0;i--){const j=(Math.sin(i*91.7)*43758.5453%1+1)%1*(i+1)|0;[p[i],p[j]]=[p[j],p[i]];}for(let i=0;i<512;i++)P[i]=p[i&255];}
+    const fd=t=>t*t*(3-2*t),hs=(i,j)=>P[P[i&255]+(j&255)]/255;
+    const vn=(X,Y)=>{const i=Math.floor(X),j=Math.floor(Y),fx=fd(X-i),fy=fd(Y-j),a=hs(i,j),b=hs(i+1,j),c2=hs(i,j+1),e=hs(i+1,j+1);return a+(b-a)*fx+(c2-a)*fy+(a-b-c2+e)*fx*fy;};
+    const fbm=(X,Y)=>{let v=0,am=.5;for(let o=0;o<5;o++){v+=am*vn(X,Y);X*=2.03;Y*=2.03;am*=.5;}return v;};
+    const ss=(a,b,v)=>{const t=Math.max(0,Math.min(1,(v-a)/(b-a)));return t*t*(3-2*t);};
+    for(let y=0;y<h;y++)for(let X=0;X<w;X++){
+      const u=X/w,v=y/h,du=u-.55,dv=v-.42,rx=du*.8+dv*.6,ry=-du*.6+dv*.8;   /* banda en diagonal */
+      const q=fbm(u*3.2+11,v*3.2+3),n=fbm(u*2.6+q*1.6,v*2.6+q*1.2),band=Math.exp(-(rx*rx)/0.11)*(.6+.4*Math.exp(-(ry*ry)/0.35));
+      const fil=1-Math.abs(2*fbm(u*7+q*2,v*7-q)-1),polvo=ss(.55,.75,fbm(u*5+40,v*5+9));
+      let tea=ss(.25,.7,n)*band,nar=ss(.6,.92,fil)*ss(.38,.62,n)*band*(1-polvo*.4),cor=ss(.62,.85,n)*band*.45;
+      tea*=1-polvo*.65;const fil2=ss(.8,.98,fil)*band*.5;
+      const gl=Math.exp(-((u-.75)**2+(v-.85)**2)/0.04)*ss(.5,.8,fbm(u*6+5,v*6+5))*.7; /* nube naranja abajo */
+      let r=18+60*tea+70*cor+255*nar+210*gl+70*fil2, g=26+120*tea+110*cor+115*nar+95*gl+130*fil2, b=30+138*tea+120*cor+45*nar+40*gl+140*fil2;r*=.82;g*=.82;b*=.82;
+      const k=(y*w+X)*4;d[k]=Math.min(255,r);d[k+1]=Math.min(255,g);d[k+2]=Math.min(255,b);d[k+3]=255;}
+    x.putImageData(img,0,0);neb=c;}
+
+  hazNebulosa();
+  function dibuja(){const W=innerWidth,H=innerHeight;if(!W)return;const D=Math.min(2,devicePixelRatio||1);cv.width=W*D;cv.height=H*D;cx.setTransform(D,0,0,D,0,0);
+    const z=1.12,w2=W*z,h2=H*z;cx.imageSmoothingQuality="high";cx.drawImage(neb,(W-w2)/2,(H-h2)/2,w2,h2);
+    cx.fillStyle="rgba(10,16,19,.35)";cx.fillRect(0,0,W,H);
+    for(let i=0;i<Math.round(W*H/3000);i++){cx.globalAlpha=.3+Math.random()*.7;cx.fillStyle="#fff";cx.beginPath();cx.arc(Math.random()*W,Math.random()*H,Math.random()*1.2+.2,0,7);cx.fill();}cx.globalAlpha=1;}
+  dibuja();let rt;addEventListener("resize",()=>{clearTimeout(rt);rt=setTimeout(dibuja,200);});
+})();
+</script>
+</body></html>
