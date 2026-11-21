@@ -55,7 +55,7 @@ label{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacin
 .mov{background:var(--bg);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
 .mov.s{border-left-color:var(--rojo)}
 .mov .txt{white-space:pre-wrap;font-size:.95rem}
-.mov .pie{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.8rem;color:var(--muted)}
+.mov .pie{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:.8rem;color:var(--muted)}
 .mov .acc{display:flex;gap:6px}
 .mini{border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:8px;padding:5px 10px;font:600 .8rem var(--sans);cursor:pointer}
 .mini.borrar.conf{border-color:var(--rojo);color:var(--rojo)}
@@ -91,6 +91,17 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
 .th button{position:absolute;top:3px;right:3px;background:#000b;color:#fff;border:0;border-radius:50%;width:24px;height:24px;font-size:13px;cursor:pointer}
 .add{width:74px;height:96px;border-radius:10px;border:2px dashed var(--accent);color:var(--accent);background:transparent;font:700 .78rem var(--sans);cursor:pointer;line-height:1.3}
 .mini{white-space:nowrap}
+.wal{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.82rem;color:var(--muted)}
+.wal code{font:600 .82rem ui-monospace,Menlo,monospace;color:var(--fg);background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:4px 8px;cursor:pointer}
+.wal a{color:var(--accent);font-weight:600;text-decoration:none}
+.scan{position:fixed;inset:0;z-index:60;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.scan video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.scan .marco{position:relative;width:min(70vw,300px);aspect-ratio:1;border-radius:22px;box-shadow:0 0 0 100vmax rgba(0,0,0,.55);border:3px solid rgba(255,255,255,.9)}
+.scan .stxt{position:relative;color:#fff;font-size:15px;text-align:center;margin-top:22px;padding-inline:24px;max-width:420px}
+.scan .sbts{position:absolute;bottom:calc(28px + env(safe-area-inset-bottom,0px));left:0;right:0;display:flex;gap:10px;justify-content:center}
+.scan .sbts button{background:#fff;color:#111;border:0;border-radius:999px;padding:13px 24px;font:600 16px/1 var(--sans);cursor:pointer}
+.scan .sbts button.sec{background:rgba(255,255,255,.18);color:#fff}
+.walok{font-size:.75rem;margin-top:4px;color:var(--muted)}
 .mini.clip{border-color:var(--accent);color:var(--accent);background:var(--soft)}
 #visor{position:fixed;inset:0;background:#000;z-index:50;display:flex;flex-direction:column}
 #visor .vtop{display:flex;justify-content:space-between;align-items:center;padding:max(14px,env(safe-area-inset-top)) 16px 8px;color:#fff;font-weight:700}
@@ -139,6 +150,11 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
         <div class="campo"><input id="sCli" class="txt" list="clientes" autocomplete="off" placeholder="CEO MP"></div></div>
     </div>
     <datalist id="clientes"></datalist>
+    <div><label for="sWal">Wallet a la que mandaste (opcional)</label>
+      <div class="campo"><input id="sWal" class="txt" list="wallets" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="T…" style="font-family:ui-monospace,Menlo,monospace;font-size:.85rem"></div>
+      <div class="dos" style="margin-top:8px"><button class="btn sec" id="sWalScan" type="button">📷 Escanear QR</button><button class="btn sec" id="sWalPegar" type="button">📋 Pegar</button></div>
+      <div class="walok" id="sWalOk"></div></div>
+    <datalist id="wallets"></datalist>
     <div class="calc"><span>Le cobras</span><b id="sCobro">—</b></div>
     <div id="compBox"><label>📎 Comprobantes <span id="compN"></span></label>
       <div class="thumbs" id="thumbs" style="margin-top:6px">
@@ -208,6 +224,12 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
   <input type="file" id="inCam" accept="image/*" capture="environment" hidden>
   <input type="file" id="inGal" accept="image/*" multiple hidden>
   <input type="file" id="inAdd" accept="image/*" multiple hidden>
+  <div class="scan" id="scan" hidden>
+    <video id="video" playsinline muted></video>
+    <div class="marco"></div>
+    <div class="stxt" id="scanTxt">Apunta la cámara al QR de la wallet</div>
+    <div class="sbts"><button type="button" class="sec" id="scanPegar">Pegar</button><button type="button" id="scanCerrar">Cancelar</button></div>
+  </div>
   <div id="visor" hidden>
     <div class="vtop"><button class="mini" id="vCerrar" type="button" style="color:#fff">✕ Cerrar</button><span id="vNum" style="color:#aaa"></span></div>
     <div class="vtit" id="vTit"></div>
@@ -360,9 +382,9 @@ function saldos(){
   return {mapa, total: Math.round(sd*100)/100};
 }
 function textoSaldo(){ return "💰 Saldo wallet\n$" + fmt2(saldos().total) + " USDT\n" + fechaLarga(Date.now()); }
-function texto(m){
+function texto(m, sinWallet){
   if(m.t==="a") return "⚖️ Saldo inicial\n$" + fmt2(m.usdt) + " USDT";
-  if(m.t==="s") return "⭕️ Salida wallet\n$" + fmt(m.usdt) + (m.pct ? "\n+" + m.pct + "%" : "") + "\n" + m.cli;
+  if(m.t==="s") return "⭕️ Salida wallet\n$" + fmt(m.usdt) + (m.pct ? "\n+" + m.pct + "%" : "") + "\n" + m.cli + (m.wallet && !sinWallet ? "\nWallet: " + m.wallet : "");
   const tit = m.pesos ? "✅ Compra moneda" + (m.prov ? " " + m.prov : "") : "✅ Entrada wallet" + (m.prov ? " " + m.prov : "");
   return tit + (m.pesos ? "\n$" + fmt2(m.pesos) + " MXN" : "") + (m.tc ? "\nTC " + m.tc : "") + "\n" + fmt2(m.usdt) + " USDT";
 }
@@ -381,14 +403,83 @@ function guardar(m){
   $("listo").scrollIntoView({behavior:"smooth",block:"center"});
 }
 
+/* ===== wallet de la salida ===== */
+const esWallet = w => /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(w);
+const corta = w => w.slice(0,6) + "…" + w.slice(-6);
+function walletsDe(cli){ const c=(cli||"").trim().toLowerCase(); const ws=[];
+  movs.filter(m=>m.t==="s"&&m.wallet&&(!c||m.cli.toLowerCase()===c)).sort((a,b)=>b.f-a.f).forEach(m=>{ if(!ws.includes(m.wallet)) ws.push(m.wallet); }); return ws; }
+function walInfo(){
+  const w=$("sWal").value.trim(), ok=$("sWalOk"), ws=walletsDe($("sCli").value);
+  $("wallets").innerHTML = ws.map(x=>'<option value="'+x+'">').join("");
+  ok.style.color="";
+  if(!w){ ok.textContent = ws.length ? "Este cliente ya usó " + ws.length + (ws.length>1?" wallets":" wallet") + ". Toca el cuadro para elegirla." : ""; return; }
+  if(!esWallet(w)){ ok.textContent = "⚠️ Esa no parece una wallet de TRON (empieza con T y tiene 34 caracteres)."; ok.style.color="var(--rojo)"; return; }
+  ok.textContent = ws.includes(w) ? "✔ Wallet que ya usaste con este cliente" : "Wallet nueva para este cliente";
+}
+$("sWal").addEventListener("input", walInfo);
+$("sCli").addEventListener("input", walInfo);
+$("sWalPegar").onclick = async ()=>{ try{ const t=(await navigator.clipboard.readText()).trim(); const m=t.match(/T[1-9A-HJ-NP-Za-km-z]{33}/); $("sWal").value = m ? m[0] : t; }catch(e){ $("sWal").focus(); } walInfo(); };
+
+/* ===== escanear wallet con la cámara ===== */
+const RE_W=/T[1-9A-HJ-NP-Za-km-z]{33}/g;
+function walletDeTexto(t){ t=String(t||"").trim(); const e=[...new Set(t.match(RE_W)||[])];
+  if(e.length===1) return {dir:e[0]};
+  if(e.length>1) return {error:"El QR trae más de una wallet."};
+  if(/0x[0-9a-fA-F]{40}/.test(t)) return {error:"Ese QR es de otra red (Ethereum/BSC), no de TRON."};
+  return {error:"No encontré una wallet de TRON en ese QR."}; }
+let lectorJs=null;
+function cargarJsQR(){ if(window.jsQR) return Promise.resolve(window.jsQR); if(lectorJs) return lectorJs;
+  lectorJs=new Promise((ok,mal)=>{const sc=document.createElement("script");sc.src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";sc.onload=()=>ok(window.jsQR);sc.onerror=()=>{lectorJs=null;mal(new Error("sin lector"));};document.head.append(sc);});
+  return lectorJs; }
+let detector=null;
+async function obtenerDetector(){ if(detector!==null) return detector;
+  try{ if("BarcodeDetector" in window && (await BarcodeDetector.getSupportedFormats()).includes("qr_code")){ detector=new BarcodeDetector({formats:["qr_code"]}); return detector; } }catch(e){}
+  detector=false; return detector; }
+const lienzoQR=document.createElement("canvas");
+async function leerQR(v){ const d=await obtenerDetector();
+  if(d){ const r=await d.detect(v); return r.length? r[0].rawValue : null; }
+  const jsQR=await cargarJsQR(); const k=Math.min(1,1000/Math.max(v.videoWidth,v.videoHeight));
+  lienzoQR.width=Math.round(v.videoWidth*k); lienzoQR.height=Math.round(v.videoHeight*k);
+  const c=lienzoQR.getContext("2d",{willReadFrequently:true}); c.drawImage(v,0,0,lienzoQR.width,lienzoQR.height);
+  const im=c.getImageData(0,0,lienzoQR.width,lienzoQR.height); const r=jsQR(im.data,im.width,im.height,{inversionAttempts:"attemptBoth"}); return r? r.data : null; }
+let flujo=null, escaneando=false, alLeer=null;
+async function escanearWallet(cb){
+  alLeer=cb;
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ alert("Este navegador no permite usar la cámara."); return; }
+  try{ flujo=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720}},audio:false}); }
+  catch(e){ alert(e.name==="NotAllowedError" ? "La cámara está bloqueada. Permítela en Chrome → ⋮ → Configuración → Configuración de sitios → Cámara." : "No se pudo abrir la cámara."); return; }
+  const v=$("video"); v.srcObject=flujo; $("scan").hidden=false; $("scanTxt").textContent="Apunta la cámara al QR de la wallet";
+  try{ await v.play(); }catch(e){}
+  escaneando=true; let ult=0;
+  const ciclo=async t=>{ if(!escaneando) return;
+    if(t-ult>220 && v.readyState>=2){ ult=t;
+      try{ const txt=await leerQR(v); if(txt){ const r=walletDeTexto(txt);
+          if(r.dir){ if(navigator.vibrate) navigator.vibrate(60); cerrarScan(); alLeer && alLeer(r.dir); return; }
+          $("scanTxt").textContent=r.error; } }
+      catch(e){ $("scanTxt").textContent="No se pudo cargar el lector de QR. Revisa tu internet."; } }
+    requestAnimationFrame(ciclo); };
+  requestAnimationFrame(ciclo);
+}
+function cerrarScan(){ escaneando=false; $("scan").hidden=true; if(flujo){ flujo.getTracks().forEach(t=>t.stop()); flujo=null; } $("video").srcObject=null; }
+$("scanCerrar").onclick=cerrarScan;
+$("scanPegar").onclick=async()=>{ try{ const r=walletDeTexto(await navigator.clipboard.readText()); if(r.dir){ cerrarScan(); alLeer && alLeer(r.dir); } else $("scanTxt").textContent="Lo que copiaste no es una wallet de TRON."; }catch(e){ $("scanTxt").textContent="No pude leer lo copiado."; } };
+document.addEventListener("visibilitychange",()=>{ if(document.hidden && escaneando) cerrarScan(); });
+$("sWalScan").onclick=()=>escanearWallet(w=>{ $("sWal").value=w; walInfo(); });
+function guardaWallet(id,w){ const x=movs.find(y=>y.id===id); if(x){ x.wallet=w; escribir(LS, movs); pinta(); } }
+async function copia(t, btn){ try{ await navigator.clipboard.writeText(t); const o=btn.textContent; btn.textContent="✔ Copiada"; setTimeout(()=>btn.textContent=o,1500); }catch(e){} }
+
 $("sGuardar").onclick = ()=>{
   const usdt = num($("sMonto").value), pct = $("sPct").value.trim(), cli = $("sCli").value.trim();
   if(!usdt) return avisa($("sMonto"));
   if(!cli) return avisa($("sCli"));
   const p = num(pct);
   if(pct) escribir("ultPct", pct);
-  guardar({id:Date.now(), f:Date.now(), t:"s", usdt, pct:p, cli, cobro: usdt*p/100});
-  $("sMonto").value=""; $("sCli").value=""; calcSal();
+  const w = $("sWal").value.trim();
+  if(w && !esWallet(w)) return avisa($("sWal"));
+  const mv = {id:Date.now(), f:Date.now(), t:"s", usdt, pct:p, cli, cobro: usdt*p/100};
+  if(w) mv.wallet = w;
+  guardar(mv);
+  $("sMonto").value=""; $("sCli").value=""; $("sWal").value=""; walInfo(); calcSal();
 };
 $("eGuardar").onclick = ()=>{
   const prov = $("eProv").value.trim(), pesos = num($("ePesos").value), tcTxt = $("eTc").value.trim(), tc = num(tcTxt);
@@ -471,7 +562,7 @@ function pinta(){
   del.forEach(m=>{
     const el = document.createElement("div"); el.className = "mov " + m.t;
     const fc = document.createElement("div"); fc.className="fch"; fc.textContent = fechaLarga(m.f);
-    const tx = document.createElement("div"); tx.className="txt"; tx.textContent = texto(m);
+    const tx = document.createElement("div"); tx.className="txt"; tx.textContent = texto(m, true);
     const pie = document.createElement("div"); pie.className="pie";
     const h = document.createElement("span"); h.textContent = (m.verificada ? "✅ Wallet verificada · " : "") + (m.t==="s" && m.cobro ? "Cobro " + fmt(m.cobro) + " USDT · " : "") + "Saldo: " + fmt2(sd.mapa[m.id]) + " USDT";
     const acc = document.createElement("div"); acc.className="acc";
@@ -487,7 +578,22 @@ function pinta(){
     const nf = conteo[m.id]||0;
     const bf = document.createElement("button"); bf.type="button"; bf.className = "mini" + (nf ? " clip" : ""); bf.textContent = nf ? "📎 " + nf : "📎 Agregar";
     bf.onclick = ()=>{ if(!nf){ vMov = m; $("inAdd").click(); } abreVisor(m, 0); };
-    acc.append(bf, bc, bb); pie.append(h, acc); el.append(fc, tx, pie); L.append(el);
+    acc.append(bf, bc, bb); pie.append(h, acc); el.append(fc, tx);
+    if(m.t==="s"){
+      const wr = document.createElement("div"); wr.className="wal";
+      if(m.wallet){
+        const c = document.createElement("code"); c.textContent = "👛 " + corta(m.wallet); c.title = "Toca para copiar la wallet completa";
+        c.onclick = ()=>copia(m.wallet, c);
+        const a = document.createElement("a"); a.href = "https://tronscan.org/#/address/" + m.wallet; a.target = "_blank"; a.rel = "noopener"; a.textContent = "Ver en Tronscan ↗";
+        wr.append(c, a);
+      }else{
+        const b = document.createElement("button"); b.type="button"; b.className="mini"; b.textContent="👛 Agregar wallet";
+        b.onclick = ()=>escanearWallet(w=>guardaWallet(m.id, w));
+        wr.append(b);
+      }
+      el.append(wr);
+    }
+    el.append(pie); L.append(el);
   });
   const clis = [...new Set(movs.filter(m=>m.t==="s").map(m=>m.cli))];
   $("clientes").innerHTML = clis.map(c=>'<option value="'+c.replace(/"/g,"&quot;")+'">').join("");
@@ -497,10 +603,10 @@ function pinta(){
 
 $("respaldo").onclick = async ()=>{
   const sdR = saldos().mapa;
-  const filas = [["Fecha","Hora","Tipo","Cliente/Proveedor","USDT","Porcentaje","Cobro USDT","Pesos","Tipo de cambio","Saldo USDT"]];
+  const filas = [["Fecha","Hora","Tipo","Cliente/Proveedor","USDT","Porcentaje","Cobro USDT","Pesos","Tipo de cambio","Saldo USDT","Wallet"]];
   movs.slice().sort((a,b)=>a.f-b.f).forEach(m=>{
     const d = new Date(m.f);
-    filas.push([d.toLocaleDateString("es-MX"), hora(m.f), m.t==="s"?"Salida":m.t==="e"?"Compra":"Ajuste de saldo", m.t==="s"?m.cli:m.t==="e"?m.prov:"", m.usdt, m.t==="s"&&m.pct?m.pct:"", m.t==="s"&&m.cobro?m.cobro:"", m.t==="e"&&m.pesos?m.pesos:"", m.t==="e"&&m.tc?m.tc:"", sdR[m.id]]);
+    filas.push([d.toLocaleDateString("es-MX"), hora(m.f), m.t==="s"?"Salida":m.t==="e"?"Compra":"Ajuste de saldo", m.t==="s"?m.cli:m.t==="e"?m.prov:"", m.usdt, m.t==="s"&&m.pct?m.pct:"", m.t==="s"&&m.cobro?m.cobro:"", m.t==="e"&&m.pesos?m.pesos:"", m.t==="e"&&m.tc?m.tc:"", sdR[m.id], m.wallet||""]);
   });
   const csv = "﻿" + filas.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(",")).join("\n");
   const nombre = "movimientos-" + diaDe(Date.now()) + ".csv";
