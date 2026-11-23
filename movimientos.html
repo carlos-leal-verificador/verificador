@@ -118,6 +118,18 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
 .edo .bts{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:16px 20px 0}
 .edo .bts button{padding:13px;border-radius:14px;font:700 .95rem var(--sans);cursor:pointer;border:1.5px solid #13294b;background:#fff;color:#13294b}
 .edo .bts button.p{background:#13294b;color:#fff}
+.vozbtn{width:100%;margin-bottom:10px;display:flex;align-items:center;justify-content:center;gap:10px;padding:14px;border-radius:14px;border:2px dashed var(--accent);background:var(--soft);color:var(--accent);font:700 1rem var(--sans);cursor:pointer}
+.voz{position:fixed;inset:0;z-index:58;background:rgba(0,0,0,.65);display:flex;align-items:flex-end;justify-content:center}
+.voz[hidden]{display:none}
+.voz .hoja{background:var(--card);border:1px solid var(--line);width:100%;max-width:480px;border-radius:22px 22px 0 0;padding:20px 18px max(18px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px}
+.voz h3{margin:0;font-size:1.05rem}
+.voz .ej{font-size:.82rem;color:var(--muted);line-height:1.5}
+.voz textarea{width:100%;min-height:84px;border-radius:12px;border:2px solid var(--line);background:var(--bg);color:var(--fg);font:500 1rem var(--sans);padding:10px 12px;resize:vertical}
+.voz .mic{width:76px;height:76px;border-radius:50%;margin:0 auto;border:0;background:var(--accent);color:var(--accent-fg);font-size:2rem;cursor:pointer;box-shadow:0 0 0 0 rgba(60,196,143,.6)}
+.voz .mic.on{animation:latido 1.2s infinite}
+@keyframes latido{0%{box-shadow:0 0 0 0 rgba(60,196,143,.6)}70%{box-shadow:0 0 0 18px rgba(60,196,143,0)}100%{box-shadow:0 0 0 0 rgba(60,196,143,0)}}
+.voz .est{text-align:center;font-size:.85rem;color:var(--muted);min-height:1.2em}
+.voz .bts2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .walok{font-size:.75rem;margin-top:4px;color:var(--muted)}
 .mini.clip{border-color:var(--accent);color:var(--accent);background:var(--soft)}
 #visor{position:fixed;inset:0;background:#000;z-index:50;display:flex;flex-direction:column}
@@ -151,6 +163,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
     </div>
   </div>
 
+  <button class="vozbtn" id="vozAbrir" type="button">🎙️ Capturar por voz</button>
   <div class="dos">
     <button class="big sal on" id="bSal" type="button">⭕️ Salida</button>
     <button class="big ent" id="bEnt" type="button">✅ Compra</button>
@@ -241,6 +254,16 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
   <input type="file" id="inCam" accept="image/*" capture="environment" hidden>
   <input type="file" id="inGal" accept="image/*" multiple hidden>
   <input type="file" id="inAdd" accept="image/*" multiple hidden>
+  <div class="voz" id="voz" hidden role="dialog" aria-modal="true" aria-labelledby="vozTit">
+    <div class="hoja">
+      <h3 id="vozTit">🎙️ Dime el movimiento</h3>
+      <div class="ej">Ejemplos:<br>“<b>Salida 100 mil a CEO MP al 5.5</b>”<br>“<b>Compra 2 millones de pesos a Regio a 19.244</b>”</div>
+      <button class="mic" id="vozMic" type="button" aria-label="Hablar">🎙️</button>
+      <div class="est" id="vozEst"></div>
+      <textarea id="vozTxt" placeholder="Aquí aparece lo que dices. También puedes usar el micrófono 🎤 de tu teclado." aria-label="Texto dictado"></textarea>
+      <div class="bts2"><button class="btn" id="vozLlenar" type="button">Llenar</button><button class="btn sec" id="vozCerrar" type="button">Cancelar</button></div>
+    </div>
+  </div>
   <div class="edo" id="edo" hidden role="dialog" aria-modal="true" aria-labelledby="edoTit">
     <div class="hoja">
       <div class="cab"><b id="edoTit">Estado de la salida</b><span id="edoFolio"></span></div>
@@ -557,6 +580,109 @@ $("edoComp").onclick = async ()=>{
   try{ if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], text: "Folio " + folioTxt(m) + "\n" + texto(m)}); return; } }catch(e){ if(e && e.name==="AbortError") return; }
   const a=document.createElement("a"); a.href=URL.createObjectURL(file); a.download=file.name; a.click();
 };
+/* ===== entender lo dictado ===== */
+const VOZ_U={cero:0,un:1,uno:1,una:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9,diez:10,once:11,doce:12,trece:13,catorce:14,quince:15,dieciseis:16,diecisiete:17,dieciocho:18,diecinueve:19,veinte:20,veintiun:21,veintiuno:21,veintidos:22,veintitres:23,veinticuatro:24,veinticinco:25,veintiseis:26,veintisiete:27,veintiocho:28,veintinueve:29,treinta:30,cuarenta:40,cincuenta:50,sesenta:60,setenta:70,ochenta:80,noventa:90,cien:100,ciento:100,doscientos:200,doscientas:200,trescientos:300,trescientas:300,cuatrocientos:400,cuatrocientas:400,quinientos:500,quinientas:500,seiscientos:600,seiscientas:600,setecientos:700,setecientas:700,ochocientos:800,ochocientas:800,novecientos:900,novecientas:900};
+function vozNorm(t){
+  t=String(t||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
+  t=t.replace(/(\d),(\d{3})(?!\d)/g,"$1$2").replace(/(\d),(\d{3})(?!\d)/g,"$1$2");   /* 100,000 -> 100000 */
+  t=t.replace(/(\d),(\d{1,2})(?!\d)/g,"$1.$2");                                       /* 5,5 -> 5.5 */
+  t=t.replace(/\bpor ?ciento\b/g,"%").replace(/\bporciento\b/g,"%");
+  t=t.replace(/(\d)\s+punto\s+(\d)/g,"$1.$2");
+  /* palabras a número */
+  const tk=t.split(/\s+/),out=[];let i=0;
+  while(i<tk.length){
+    const w=tk[i];
+    const prevNum=out.length&&/^\d+(\.\d+)?$/.test(String(out[out.length-1]));
+    if((w==="mil"||/^millon(es)?$/.test(w))&&prevNum){out.push(w);i++;continue;}
+    if(!(w in VOZ_U)&&w!=="mil"&&!/^millon(es)?$/.test(w)&&!(w==="y"&&out.length&&typeof out[out.length-1]==="object")){out.push(w);i++;continue;}
+    if(w==="y"){i++;continue;}
+    let tot=0,cur=0,usado=false;
+    while(i<tk.length){
+      const x=tk[i];
+      if(x in VOZ_U){cur+=VOZ_U[x];usado=true;i++;}
+      else if(x==="y"&&usado&&i+1<tk.length&&(tk[i+1] in VOZ_U)){i++;}
+      else if(x==="mil"){cur=(cur||1)*1000;tot+=cur;cur=0;usado=true;i++;}
+      else if(/^millon(es)?$/.test(x)){tot=(tot+(cur||1))*1e6;cur=0;usado=true;i++;}
+      else if(x==="punto"&&usado&&i+1<tk.length&&(tk[i+1] in VOZ_U)){const d=VOZ_U[tk[i+1]];out.push({n:tot+cur+Number("0."+d)});tot=0;cur=0;usado=false;i+=2;break;}
+      else break;
+    }
+    if(usado)out.push({n:tot+cur});
+  }
+  t=out.map(x=>typeof x==="object"?String(x.n):x).join(" ");
+  t=t.replace(/(\d+(?:\.\d+)?)\s*(?:mil)\b/g,(_,a)=>String(Math.round(parseFloat(a)*1000)));
+  t=t.replace(/(\d+(?:\.\d+)?)\s*millon(?:es)?\b/g,(_,a)=>String(Math.round(parseFloat(a)*1e6)));
+  t=t.replace(/(\d+)\s+y\s+medio\b/g,(_,a)=>String(parseFloat(a)+0.5));
+  t=t.replace(/(\d+(?:\.\d+)?)\s+(\d{3})(?!\d)/g,(m,a,b)=>/\./.test(a)?m:String(Number(a)*1000+Number(b)));
+  t=t.replace(/(\d+)\s+%/g,"$1%");
+  return t.replace(/\s+/g," ").trim();
+}
+const vozClave=s=>String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]/g,"");
+function vozEntender(texto,clientes){
+  const t=vozNorm(texto),r={texto:t};
+  r.tipo=/\b(compra|compre|compramos|entrada|entro)\b/.test(t)?"e":/\b(salida|sale|salio|mande|envie|mandar|enviar)\b/.test(t)?"s":null;
+  let pct=null;const mp=t.match(/(\d+(?:\.\d+)?)%/)||t.match(/\bal\s+(\d+(?:\.\d+)?)\b/);
+  if(mp&&parseFloat(mp[1])<=30)pct=parseFloat(mp[1]);
+  if(r.tipo!=="e"){
+    r.pct=pct;
+    const nums=[...t.matchAll(/\d+(?:\.\d+)?(?!%)/g)].map(m=>({v:parseFloat(m[0]),i:m.index}))
+      .filter(n=>!(pct!==null&&n.v===pct&&/^\s*%|^\s*$/.test(t.slice(n.i+String(n.v).length,n.i+String(n.v).length+2)))&&!(pct!==null&&t.slice(Math.max(0,n.i-3),n.i).includes("al")&&n.v===pct));
+    const big=nums.filter(n=>n.v>=50);r.monto=big.length?big[0].v:(nums[0]?nums[0].v:null);
+    let c=null;const mc=t.match(/\b(?:a|para|cliente|al cliente)\s+(?!\d)([a-z][a-z0-9 .\-]*?)(?=\s+(?:al|con|por|de)\s+\d|\s+\d|\s*%|$)/);
+    if(mc)c=mc[1].replace(/\b(usdt|dolares|dolar|usd|tether|wallet|la|el|los)\b/g,"").replace(/\s+/g," ").trim();
+    if(c){const k=vozClave(c),hit=(clientes||[]).find(x=>vozClave(x)===k)||(clientes||[]).find(x=>{const y=vozClave(x);return y&&(y.includes(k)||k.includes(y))&&Math.min(y.length,k.length)>=3;});
+      r.cli=hit||c.toUpperCase();}
+  }else{
+    r.prov=/\bregio\b/.test(t)?"Regio":/\b(kapital|capital)\b/.test(t)?"Kapital":null;
+    const mtc=t.match(/(?:tipo de cambio|cambio|tc|a)\s+(?:de\s+)?(\d{1,2}\.\d{1,4})\b/)||t.match(/\b(1\d|2\d)\.\d{1,4}\b/);
+    if(mtc)r.tc=parseFloat(mtc[1]||mtc[0]);
+    const mpe=t.match(/(\d+(?:\.\d+)?)\s*(?:pesos|mxn)/);
+    const mus=t.match(/(\d+(?:\.\d+)?)\s*(?:usdt|dolares|usd)/);
+    if(mpe)r.pesos=parseFloat(mpe[1]);
+    if(mus)r.usdt=parseFloat(mus[1]);
+    if(!r.pesos&&!r.usdt){const n=[...t.matchAll(/\d+(?:\.\d+)?/g)].map(m=>parseFloat(m[0])).filter(v=>v!==r.tc&&v>=1000);if(n.length)r.pesos=n[0];}
+  }
+  return r;
+}
+
+/* ===== captura por voz ===== */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec=null, oyendo=false;
+function vozEst(t){ $("vozEst").textContent=t; }
+function vozEscuchar(){
+  if(!SR){ vozEst("Toca el cuadro y usa el micrófono 🎤 de tu teclado."); $("vozTxt").focus(); return; }
+  if(oyendo){ try{ rec.stop(); }catch(e){} return; }
+  rec=new SR(); rec.lang="es-MX"; rec.interimResults=true; rec.continuous=false; rec.maxAlternatives=1;
+  let final="";
+  rec.onstart=()=>{ oyendo=true; $("vozMic").classList.add("on"); vozEst("Te escucho… habla ahora"); };
+  rec.onresult=e=>{ let tmp=""; for(let i=e.resultIndex;i<e.results.length;i++){ const r=e.results[i]; if(r.isFinal) final+=r[0].transcript; else tmp+=r[0].transcript; } $("vozTxt").value=(final+tmp).trim(); };
+  rec.onerror=e=>{ vozEst(e.error==="not-allowed"||e.error==="service-not-allowed" ? "El micrófono está bloqueado. Usa el micrófono 🎤 de tu teclado." : e.error==="no-speech" ? "No te escuché. Toca 🎙️ e inténtalo otra vez." : "No se pudo escuchar. Usa el micrófono 🎤 de tu teclado."); };
+  rec.onend=()=>{ oyendo=false; $("vozMic").classList.remove("on"); if($("vozTxt").value.trim()){ vozEst("¿Está bien? Toca “Llenar”."); } };
+  try{ rec.start(); }catch(e){ vozEst("Usa el micrófono 🎤 de tu teclado."); $("vozTxt").focus(); }
+}
+function vozAbrir(){ $("vozTxt").value=""; vozEst(SR ? "Toca 🎙️ y habla" : "Toca el cuadro y usa el micrófono 🎤 de tu teclado."); $("voz").hidden=false; if(SR) vozEscuchar(); else $("vozTxt").focus(); }
+function vozCerrar(){ if(oyendo){ try{ rec.abort(); }catch(e){} } $("voz").hidden=true; }
+const cifra = n => (Math.round(n*1000)/1000).toLocaleString("en-US",{maximumFractionDigits:3});
+function vozLlenar(){
+  const txt=$("vozTxt").value.trim(); if(!txt){ vozEst("No hay nada que llenar todavía."); return; }
+  const clientes=[...new Set(movs.filter(m=>m.t==="s"&&m.cli).map(m=>m.cli))];
+  const r=vozEntender(txt, clientes), t=r.tipo||tipo;
+  ponTipo(t);
+  if(t==="s"){
+    if(!r.monto){ vozEst("No entendí la cantidad. Di por ejemplo “salida 100 mil a CEO MP”."); return; }
+    $("sMonto").value=cifra(r.monto); $("sPct").value=r.pct!=null?String(r.pct):""; if(r.cli) $("sCli").value=r.cli;
+    calcSal(); walInfo();
+  }else{
+    if(r.prov){ $("eProv").value=r.prov; marcaProv(); }
+    if(r.pesos) $("ePesos").value=cifra(r.pesos);
+    if(r.tc) $("eTc").value=String(r.tc);
+    if(r.usdt) $("eUsdt").value=cifra(r.usdt); else calcEnt();
+  }
+  vozCerrar();
+  const f=$(t==="s"?"fSal":"fEnt"); f.scrollIntoView({behavior:"smooth",block:"start"});
+  f.style.outline="2px solid var(--accent)"; setTimeout(()=>f.style.outline="",1800);
+}
+$("vozAbrir").onclick=vozAbrir; $("vozMic").onclick=vozEscuchar; $("vozCerrar").onclick=vozCerrar; $("vozLlenar").onclick=vozLlenar;
+$("voz").addEventListener("click",e=>{ if(e.target.id==="voz") vozCerrar(); });
 async function copia(t, btn){ try{ await navigator.clipboard.writeText(t); const o=btn.textContent; btn.textContent="✔ Copiada"; setTimeout(()=>btn.textContent=o,1500); }catch(e){} }
 
 $("sGuardar").onclick = ()=>{
