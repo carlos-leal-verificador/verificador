@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0e1512">
+<title>Hoy</title>
+<style>
+:root{--bg:#0e1512;--card:#16201b;--line:#2a3832;--fg:#e7efe9;--muted:#97a89f;--accent:#3cc48f;--rojo:#ff8a80;--num:ui-monospace,"Roboto Mono",Menlo,monospace;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
+.wrap{max-width:560px;margin:0 auto;padding:18px 16px 24px;display:flex;flex-direction:column;gap:12px}
+.top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.top h1{margin:0;font-size:1.45rem}.top span{font-size:.8rem;color:var(--muted);text-align:right}
+.c{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px 16px}
+.lab{font-size:.7rem;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
+.saldo{font:800 2.1rem/1.15 var(--num);color:var(--accent);margin:4px 0 2px;font-variant-numeric:tabular-nums;word-break:break-all}
+.saldo i{font-style:normal;font-size:.95rem;color:var(--muted);margin-left:6px}
+.xe{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:.86rem}
+.xe b{font-family:var(--num)}.up{color:var(--rojo);font-size:.75rem;margin-left:4px}.dn{color:var(--accent);font-size:.75rem;margin-left:4px}
+.g{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.k{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 12px}
+.k b{display:block;font:800 1.15rem var(--num);margin-top:4px;font-variant-numeric:tabular-nums}
+.r{color:var(--rojo)}.v{color:var(--accent)}
+.mv{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #22302a;font-size:.88rem}
+.mv:last-child{border:0}.mv small{display:block;color:var(--muted);font-size:.74rem}.mv b{font-family:var(--num);white-space:nowrap}
+.vacio{font-size:.85rem;color:var(--muted);padding:6px 0}
+.acc{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.acc button{padding:12px 4px;border-radius:14px;background:var(--card);border:1px solid rgba(60,196,143,.35);color:var(--accent);font:700 .8rem/1.35 system-ui,sans-serif;cursor:pointer}
+.acc button i{display:block;font-style:normal;font-size:1.3rem;margin-bottom:2px}
+.acc button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><h1>☀️ Hoy</h1><span id="fecha"></span></div>
+  <div class="c">
+    <div class="lab">Saldo en wallet</div>
+    <div class="saldo"><span id="saldo">—</span><i>USDT</i></div>
+    <div class="xe"><span>XE ahora <b id="xe">…</b><span id="xeCam"></span></span><span>Compra <b id="compra">…</b></span></div>
+  </div>
+  <div class="g">
+    <div class="k"><div class="lab">Salió hoy</div><b class="r" id="salio">0</b></div>
+    <div class="k"><div class="lab">Entró hoy</div><b class="v" id="entro">0</b></div>
+    <div class="k"><div class="lab">Salidas</div><b id="nSal">0</b></div>
+  </div>
+  <div class="c">
+    <div class="lab" style="margin-bottom:4px">Últimos movimientos</div>
+    <div id="ult"></div>
+  </div>
+  <div class="acc">
+    <button type="button" data-ir="rev"><i>🛡️</i>Revisar wallet</button>
+    <button type="button" data-ir="mov"><i>⭕️</i>Registrar salida</button>
+    <button type="button" data-ir="calc"><i>🧮</i>Calcular compra</button>
+  </div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const fmt=n=>Number(n||0).toLocaleString("es-MX",{maximumFractionDigits:2});
+const fmt3=n=>n.toLocaleString("es-MX",{minimumFractionDigits:3,maximumFractionDigits:3});
+const hora=t=>new Date(t).toLocaleTimeString("es-MX",{hour:"numeric",minute:"2-digit"});
+function leer(){ try{ return JSON.parse(localStorage.getItem("movimientos_v1")||"[]")||[]; }catch(e){ return []; } }
+const mismoDia=(a,b)=>{const x=new Date(a),y=new Date(b);return x.getFullYear()===y.getFullYear()&&x.getMonth()===y.getMonth()&&x.getDate()===y.getDate();};
+function pinta(){
+  const movs=leer(), ahora=Date.now();
+  $("fecha").textContent=new Date().toLocaleDateString("es-MX",{weekday:"long",day:"numeric",month:"short"})+" · "+hora(ahora);
+  let sd=0; movs.slice().sort((a,b)=>a.f-b.f).forEach(m=>{ if(m.t==="a") sd=m.usdt; else if(m.t==="e") sd+=m.usdt; else if(m.t==="s") sd-=m.usdt; });
+  $("saldo").textContent=Number(Math.round(sd*100)/100).toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2});
+  $("saldo").style.color=sd<0?"var(--rojo)":"";
+  const hoy=movs.filter(m=>mismoDia(m.f,ahora));
+  const sal=hoy.filter(m=>m.t==="s"), ent=hoy.filter(m=>m.t==="e");
+  $("salio").textContent=sal.length?"−"+fmt(sal.reduce((a,m)=>a+m.usdt,0)):"0";
+  $("entro").textContent=ent.length?"+"+fmt(ent.reduce((a,m)=>a+m.usdt,0)):"0";
+  $("nSal").textContent=sal.length;
+  const ult=movs.filter(m=>m.t==="s"||m.t==="e").sort((a,b)=>b.f-a.f).slice(0,3), box=$("ult"); box.innerHTML="";
+  if(!ult.length){ box.innerHTML='<div class="vacio">Todavía no hay movimientos.</div>'; return; }
+  ult.forEach(m=>{
+    const d=document.createElement("div"); d.className="mv";
+    const izq=document.createElement("span"); izq.textContent=(m.t==="s"?"⭕️ "+(m.cli||"Salida"):"✅ Compra "+(m.prov||""));
+    const sm=document.createElement("small");
+    sm.textContent=(mismoDia(m.f,ahora)?hora(m.f):new Date(m.f).toLocaleDateString("es-MX",{day:"numeric",month:"short"})+" · "+hora(m.f))+(m.t==="s"&&m.folio?" · S-"+String(m.folio).padStart(4,"0"):"");
+    izq.append(sm);
+    const der=document.createElement("b"); der.className=m.t==="s"?"r":"v"; der.textContent=(m.t==="s"?"−":"+")+fmt(m.usdt);
+    d.append(izq,der); box.append(d);
+  });
+}
+async function jget(u){const c=new AbortController(),t=setTimeout(()=>c.abort(),9000);try{const r=await fetch(u,{signal:c.signal,cache:"no-store"});if(!r.ok)throw 0;return await r.json();}finally{clearTimeout(t);}}
+let ultXe=0;
+async function xe(){
+  ultXe=Date.now();
+  let k=""; try{ k=(localStorage.getItem("tdKey")||"").trim(); if(k.startsWith('"')) k=JSON.parse(k); }catch(e){}
+  let v=NaN, ant=NaN;
+  if(k){ try{ const q=await jget("https://api.twelvedata.com/quote?symbol=USD/MXN&apikey="+encodeURIComponent(k)); v=parseFloat(q.close); ant=parseFloat(q.previous_close); }catch(e){} }
+  if(!(v>5)){ try{ const j=await jget("https://api.coinbase.com/v2/exchange-rates?currency=USD"); v=parseFloat(j.data.rates.MXN); }catch(e){} }
+  if(!(v>5)){ $("xe").textContent="sin conexión"; $("compra").textContent="—"; return; }
+  $("xe").textContent=fmt3(v); $("compra").textContent=fmt3(Math.round(v*1.005*1000)/1000);
+  const c=$("xeCam"); c.textContent=""; c.className="";
+  if(ant>5){ const p=(v-ant)/ant*100; c.textContent=(p>=0?"▲ ":"▼ ")+Math.abs(p).toFixed(2)+"%"; c.className=p>=0?"up":"dn"; }
+}
+document.querySelectorAll("[data-ir]").forEach(b=>b.onclick=()=>{ try{ parent.postMessage({ir:b.dataset.ir}, location.origin); }catch(e){} });
+function refrescar(){ pinta(); if(Date.now()-ultXe>4*60*1000) xe(); }
+window.addEventListener("storage",e=>{ if(e.key==="movimientos_v1"||e.key===null) pinta(); });
+window.addEventListener("message",e=>{ if(e.origin===location.origin&&e.data&&e.data.refrescar) refrescar(); });
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible"&&innerWidth>0) refrescar(); });
+setInterval(()=>{ if(document.visibilityState==="visible"&&innerWidth>0) refrescar(); },5*60*1000);
+pinta(); xe();
+</script>
+</body>
+</html>
